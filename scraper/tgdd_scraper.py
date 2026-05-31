@@ -19,7 +19,7 @@ from typing import Iterable
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -74,6 +74,39 @@ def numeric_text(text: str) -> str:
     return re.sub(r"[^\d]", "", text or "")
 
 
+def parse_display_number(text: str) -> str:
+    """Parse TGDD display counts such as '179', '7,3k', or '101k'."""
+    if not text:
+        return ""
+    match = re.search(r"(\d+(?:[,.]\d+)?)\s*([kK]?)", text)
+    if not match:
+        return ""
+    value = float(match.group(1).replace(",", "."))
+    if match.group(2).lower() == "k":
+        value *= 1000
+    return str(int(round(value)))
+
+
+def extract_sold_count(text: str) -> str:
+    match = re.search(r"đã\s*bán\s*([\d.,]+)\s*([kK]?)", text, flags=re.IGNORECASE)
+    return parse_display_number("".join(match.groups())) if match else ""
+
+
+def extract_rating_near_sold(text: str) -> str:
+    """Extract the visible star value that appears immediately before 'Đã bán'."""
+    sold_match = re.search(r"đã\s*bán", text, flags=re.IGNORECASE)
+    if not sold_match:
+        return ""
+    before_sold = text[: sold_match.start()]
+    candidates = re.findall(r"(?<![\d.])([1-5](?:[,.]\d)?)(?![\d.])", before_sold)
+    return candidates[-1].replace(",", ".") if candidates else ""
+
+
+def extract_total_reviews(text: str) -> str:
+    match = re.search(r"([\d.,]+)\s*([kK]?)\s*(?:đánh\s*giá|review|nhận\s*xét)", text, flags=re.IGNORECASE)
+    return parse_display_number("".join(match.groups())) if match else ""
+
+
 def scroll_and_expand(driver: webdriver.Chrome, max_clicks: int = 20) -> None:
     last_height = 0
     for _ in range(max_clicks):
@@ -114,24 +147,49 @@ def parse_catalog(html: str, limit: int | None = None) -> list[tuple[ProductRow,
         prices = card.select(".price, strong.price")
         discounted = prices[0].get_text(" ", strip=True) if prices else ""
         original = safe_text(card, ".price-old, .oldprice, strike") or discounted
+        card_text = " ".join(card.get_text(" ", strip=True).split())
         rating = safe_text(card, ".rating-total, .item-rating-total, .rating")
+        avg_rating = (
+            re.search(r"\d+(?:[,.]\d+)?", rating).group(0).replace(",", ".")
+            if re.search(r"\d+(?:[,.]\d+)?", rating)
+            else extract_rating_near_sold(card_text)
+        )
         row = ProductRow(
             Product_ID=product_id,
             Brand=(name.split()[0] if name else "").title(),
             Original_Price=numeric_text(original),
             Discounted_Price=numeric_text(discounted),
-            Delivery_Options=safe_text(card, ".shiping, .delivery") or "unknown",
+            Delivery_Options="",
             Inward_Date="",
-            Sales_Volume=numeric_text(safe_text(card, ".quantity, .sold")),
-            Avg_Star_Rating=re.search(r"\d+(?:[,.]\d+)?", rating or "0").group(0).replace(",", ".")
-            if re.search(r"\d+(?:[,.]\d+)?", rating or "0")
-            else "",
-            Total_Reviews=numeric_text(rating),
+            Sales_Volume=extract_sold_count(card_text),
+            Avg_Star_Rating=avg_rating,
+            Total_Reviews="",
         )
         rows.append((row, product_url))
         if limit and len(rows) >= limit:
             break
     return rows
+
+
+def enrich_product_from_detail(product: ProductRow, html: str) -> ProductRow:
+    """Update fields that may exist on the detail page.
+
+    Delivery options are location/session dependent on TGDD, so the scraper only
+    records them when they are explicitly present in the rendered page.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    detail_text = " ".join(soup.get_text(" ", strip=True).split())
+    total_reviews = extract_total_reviews(detail_text)
+    if total_reviews:
+        product.Total_Reviews = total_reviews
+    rating_text = safe_text(soup, ".rating-total, .boxReview-score, .point, .rating")
+    rating_match = re.search(r"(?<![\d.])([1-5](?:[,.]\d)?)(?![\d.])", rating_text)
+    if rating_match:
+        product.Avg_Star_Rating = rating_match.group(1).replace(",", ".")
+    delivery_text = safe_text(soup, ".delivery, .shiping, .box-delivery, .delivery-info, .policy")
+    if delivery_text and re.search(r"giao|nhận hàng|vận chuyển", delivery_text, flags=re.IGNORECASE):
+        product.Delivery_Options = delivery_text
+    return product
 
 
 def parse_reviews(product_id: str, html: str) -> list[ReviewRow]:
@@ -181,6 +239,7 @@ def scrape(limit: int | None, headless: bool) -> None:
             except TimeoutException:
                 continue
             scroll_and_expand(driver, max_clicks=8)
+            enrich_product_from_detail(product, driver.page_source)
             reviews.extend(parse_reviews(product.Product_ID, driver.page_source))
     finally:
         driver.quit()

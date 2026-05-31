@@ -89,6 +89,16 @@ npm run dev
 
 Nếu FastAPI không chạy tại `http://localhost:8000`, cập nhật biến `NEXT_PUBLIC_API_BASE_URL` trong file `.env`.
 
+
+## Lưu ý về dữ liệu crawl từ TGDD
+
+Một số trường trong file `products.csv` phụ thuộc vào dữ liệu TGDD công khai tại thời điểm crawl:
+
+- `Delivery_Options`: thông tin giao hàng phụ thuộc khu vực/session, thường không crawl ổn định từ catalog nên để trống nếu trang không render rõ.
+- `Sales_Volume`: chỉ lấy được số hiển thị công khai dạng `Đã bán ...`, không phải doanh số nội bộ theo ngày.
+- `Avg_Star_Rating`: lấy từ rating hiển thị trên catalog/detail nếu có.
+- `Total_Reviews`: chỉ điền nếu trang detail có text tổng số đánh giá/nhận xét; catalog hiện không có trường này ổn định.
+
 ## Các file dữ liệu đầu vào
 
 `data-project/raw/products.csv`
