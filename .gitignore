@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.DS_Store
+data-project/raw/*.csv
+data-project/processed/*.csv
+models/**/*.pkl
+models/sentiment/phobert_model/
+dashboard/node_modules/
+dashboard/.next/
+dashboard/dev.db
