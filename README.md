@@ -1,4 +1,6 @@
-# Customer Sentiment & Smartphone Sales Forecasting
+# Nhom13_KHDL_2026
+
+## Customer Sentiment & Smartphone Sales Forecasting
 
 End-to-end data science project for TGDD smartphone analytics: scraping, preprocessing, Vietnamese sentiment classification, product and customer clustering, cross-sell mining, sales forecasting, FastAPI serving, Streamlit demo, and a Next.js dashboard scaffold.
 
