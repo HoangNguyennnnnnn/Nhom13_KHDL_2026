@@ -1,10 +1,10 @@
 # Nhom13_KHDL_2026
 
-## Customer Sentiment & Smartphone Sales Forecasting
+## Dự án phân tích cảm xúc khách hàng và dự báo doanh số điện thoại
 
-End-to-end data science project for TGDD smartphone analytics: scraping, preprocessing, Vietnamese sentiment classification, product and customer clustering, cross-sell mining, sales forecasting, FastAPI serving, Streamlit demo, and a Next.js dashboard scaffold.
+Dự án khoa học dữ liệu end-to-end cho bài toán phân tích dữ liệu điện thoại tại TGDD: thu thập dữ liệu, tiền xử lý, phân loại cảm xúc tiếng Việt, phân cụm sản phẩm và khách hàng, khai phá luật bán chéo, dự báo doanh số, xây dựng API FastAPI, demo Streamlit và dashboard Next.js.
 
-## Project Layout
+## Cấu trúc dự án
 
 ```text
 data-project/
@@ -25,7 +25,7 @@ notebooks/
 requirements.txt
 ```
 
-## Setup
+## Cài đặt môi trường
 
 ```bash
 python -m venv .venv
@@ -33,9 +33,9 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-For Selenium, install a compatible Chrome/Chromedriver pair. For PhoBERT fine-tuning, a GPU environment is recommended.
+Với Selenium, cần cài Chrome và Chromedriver tương thích. Với PhoBERT, nên fine-tune trên môi trường có GPU.
 
-## Pipeline
+## Quy trình chạy pipeline
 
 ```bash
 python scraper/tgdd_scraper.py --limit 30
@@ -47,32 +47,37 @@ python models/apriori/cross_sell.py --input data-project/raw/baskets.csv
 python models/forecasting/train_xgboost.py --trials 100
 ```
 
-Optional PhoBERT training:
+Huấn luyện PhoBERT tùy chọn:
 
 ```bash
 python models/sentiment/train_phobert.py --epochs 2 --batch-size 8
 ```
 
-## APIs
+## Chạy API
 
 ```bash
 uvicorn api.main:app --reload
 ```
 
-Endpoints:
+Các endpoint chính:
 
-- `POST /api/v1/forecast/sales`
-- `GET /api/v1/customers/churn_alert`
-- `GET /api/v1/products/clusters`
-- `GET /api/v1/products/{product_id}/cross_sell`
+- `POST /api/v1/forecast/sales`: dự báo doanh số 7 ngày tiếp theo.
+- `GET /api/v1/customers/churn_alert`: lấy danh sách khách hàng có nguy cơ rời bỏ cao.
+- `GET /api/v1/products/clusters`: lấy danh sách sản phẩm kèm cụm phân khúc.
+- `GET /api/v1/products/{product_id}/cross_sell`: gợi ý phụ kiện bán chéo theo sản phẩm.
 
-## Streamlit Demo
+## Chạy demo Streamlit
 
 ```bash
 streamlit run streamlit_app/app.py
 ```
 
-## Next.js Dashboard
+Demo gồm 2 phần:
+
+- Khám phá cụm sản phẩm bằng biểu đồ PCA 2D.
+- Nhập đánh giá tiếng Việt để dự đoán cảm xúc bằng TF-IDF + Random Forest.
+
+## Chạy dashboard Next.js
 
 ```bash
 cd dashboard
@@ -82,14 +87,14 @@ npm run prisma:generate
 npm run dev
 ```
 
-Set `NEXT_PUBLIC_API_BASE_URL` if FastAPI is not running at `http://localhost:8000`.
+Nếu FastAPI không chạy tại `http://localhost:8000`, cập nhật biến `NEXT_PUBLIC_API_BASE_URL` trong file `.env`.
 
-## Expected Input Files
+## Các file dữ liệu đầu vào
 
 `data-project/raw/products.csv`
 
 - `Product_ID`, `Brand`, `Original_Price`, `Discounted_Price`, `Delivery_Options`, `Inward_Date`, `Sales_Volume`, `Avg_Star_Rating`, `Total_Reviews`
-- Optional modeling columns: `RAM`, `ROM`, `Battery`, `Camera_MP`, `Date`
+- Cột tùy chọn cho mô hình: `RAM`, `ROM`, `Battery`, `Camera_MP`, `Date`
 
 `data-project/raw/reviews.csv`
 
@@ -98,9 +103,9 @@ Set `NEXT_PUBLIC_API_BASE_URL` if FastAPI is not running at `http://localhost:80
 `data-project/raw/purchases.csv`
 
 - `User_ID`, `Purchase_Date`, `Transaction_ID`, `Amount`
-- Optional: `email`, `Frequency_Previous`, `Monetary_Previous`
+- Cột tùy chọn: `email`, `Frequency_Previous`, `Monetary_Previous`
 
 `data-project/raw/baskets.csv`
 
 - `Transaction_ID`, `Product_ID`
-- Optional: `Product_Type` with `smartphone` and `accessory`
+- Cột tùy chọn: `Product_Type` với giá trị `smartphone` hoặc `accessory`
