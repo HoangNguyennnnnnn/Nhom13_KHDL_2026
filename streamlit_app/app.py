@@ -23,7 +23,9 @@ with cluster_tab:
         st.warning("Run product clustering first to create data-project/processed/products_clustered.csv")
     else:
         df = pd.read_csv(path)
-        features = [col for col in ["RAM", "ROM", "Battery", "Camera_MP", "Discounted_Price"] if col in df.columns]
+        # Dynamically grab any available numeric columns for PCA representation
+        numeric_cols = df.select_dtypes(include=["number"]).columns
+        features = [col for col in ["RAM", "ROM", "Battery", "Camera_MP", "Discounted_Price", "Original_Price", "Sales_Volume", "Avg_Star_Rating", "Total_Reviews", "Discount_Rate"] if col in numeric_cols]
         if len(features) < 2:
             st.warning("Need at least two numeric product features for PCA.")
         else:

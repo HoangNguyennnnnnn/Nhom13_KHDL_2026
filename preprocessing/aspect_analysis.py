@@ -69,6 +69,12 @@ def extract_aspect_sentiments(review_text: str, rating: float) -> list[dict]:
         for aspect, keywords in ASPECT_KEYWORDS.items():
             # Check if any keyword matches this clause
             if any(re.search(rf"\b{kw}\b", clause) for kw in keywords):
+                # Classify strictly to prevent wrong overlaps (e.g. if 'pin tụt' is in clause, don't class as Performance just because of 'tụt')
+                if aspect == "Performance/OS" and any(pb in clause for pb in ["pin", "sạc", "sac"]):
+                    continue
+                if aspect == "Design/Build" and any(cam in clause for cam in ["camera", "chụp", "quay"]):
+                    continue
+                    
                 # Sentiment decision: default to rating-based, override if strong negative/positive cue found
                 sentiment = 1 if rating >= 4 else (0 if rating <= 2 else 0.5)
                 
