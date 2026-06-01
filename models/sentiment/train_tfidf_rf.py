@@ -33,6 +33,12 @@ def load_data(path: Path) -> pd.DataFrame:
     df = df.dropna(subset=[text_col, "label"]).copy()
     df["label"] = df["label"].astype(int)
     df["_text"] = df[text_col].astype(str)
+    
+    # Extract helpfulness weight
+    if "Helpfulness_Count" in df.columns:
+        df["weight"] = pd.to_numeric(df["Helpfulness_Count"], errors="coerce").fillna(0).astype(int) + 1
+    else:
+        df["weight"] = 1
     return df
 
 
@@ -55,19 +61,38 @@ def train(path: Path) -> None:
     )
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
     rows = []
-    for fold, (train_idx, valid_idx) in enumerate(skf.split(df["_text"], df["label"]), start=1):
-        pipeline.fit(df.iloc[train_idx]["_text"], df.iloc[train_idx]["label"])
-        pred = pipeline.predict(df.iloc[valid_idx]["_text"])
+    
+    X_text = df["_text"]
+    y = df["label"]
+    weights = df["weight"]
+    
+    for fold, (train_idx, valid_idx) in enumerate(skf.split(X_text, y), start=1):
+        # We manually vectorise first to pass sample_weight to the classifier
+        tfidf = pipeline.named_steps["tfidf"]
+        rf = pipeline.named_steps["rf"]
+        
+        X_train_vec = tfidf.fit_transform(X_text.iloc[train_idx])
+        X_val_vec = tfidf.transform(X_text.iloc[valid_idx])
+        
+        rf.fit(X_train_vec, y.iloc[train_idx], sample_weight=weights.iloc[train_idx].values)
+        pred = rf.predict(X_val_vec)
+        
         rows.append(
             {
                 "fold": fold,
-                "f1": f1_score(df.iloc[valid_idx]["label"], pred, zero_division=0),
-                "precision": precision_score(df.iloc[valid_idx]["label"], pred, zero_division=0),
-                "recall": recall_score(df.iloc[valid_idx]["label"], pred, zero_division=0),
+                "f1": f1_score(y.iloc[valid_idx], pred, zero_division=0),
+                "precision": precision_score(y.iloc[valid_idx], pred, zero_division=0),
+                "recall": recall_score(y.iloc[valid_idx], pred, zero_division=0),
             }
         )
-    pipeline.fit(df["_text"], df["label"])
-    probs = pipeline.predict_proba(df["_text"])[:, list(pipeline.classes_).index(1)]
+        
+    # Final fit on all data
+    tfidf = pipeline.named_steps["tfidf"]
+    rf = pipeline.named_steps["rf"]
+    X_all_vec = tfidf.fit_transform(X_text)
+    rf.fit(X_all_vec, y, sample_weight=weights.values)
+    
+    probs = rf.predict_proba(X_all_vec)[:, list(rf.classes_).index(1)]
     df["Sentiment_Score"] = probs
     df["Sentiment_Label"] = np.where(probs >= 0.5, 1, 0)
     aspect_rows = [score_aspects(text, score) for text, score in zip(df["_text"], probs)]
@@ -75,8 +100,8 @@ def train(path: Path) -> None:
 
     out_dir = Path("models/sentiment")
     out_dir.mkdir(parents=True, exist_ok=True)
-    joblib.dump(pipeline.named_steps["tfidf"], out_dir / "tfidf_vectorizer.pkl")
-    joblib.dump(pipeline.named_steps["rf"], out_dir / "rf_classifier.pkl")
+    joblib.dump(tfidf, out_dir / "tfidf_vectorizer.pkl")
+    joblib.dump(rf, out_dir / "rf_classifier.pkl")
     pd.DataFrame(rows).to_csv(out_dir / "tfidf_rf_metrics.csv", index=False)
     df.to_csv("data-project/processed/reviews_scored.csv", index=False)
 

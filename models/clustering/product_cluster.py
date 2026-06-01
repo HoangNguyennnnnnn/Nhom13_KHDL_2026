@@ -14,17 +14,24 @@ from sklearn.preprocessing import StandardScaler
 
 
 SEED = 42
-FEATURES = ["RAM", "ROM", "Battery", "Camera_MP", "Discounted_Price"]
+FEATURES = ["RAM", "ROM", "Battery", "Camera_MP", "Discounted_Price", "Avg_Star_Rating", "Total_Reviews"]
 
 
 def cluster_name(row: pd.Series) -> str:
-    if row.get("Battery", 0) >= 5000 and row.get("Discounted_Price", 0) <= row.get("_median_price", 0):
+    # Upgraded cluster tagging rules utilizing Avg_Star_Rating and Total_Reviews
+    price = row.get("Discounted_Price", 0)
+    rating = row.get("Avg_Star_Rating", 0)
+    reviews = row.get("Total_Reviews", 0)
+    
+    if rating >= 4.7 and reviews >= 10:
+        return "Sản phẩm Flagship được yêu thích cực cao"
+    if row.get("Battery", 0) >= 5000 and price <= row.get("_median_price", 0):
         return "Phân khúc pin trâu giá rẻ"
-    if row.get("Camera_MP", 0) >= 48:
-        return "Phân khúc camera cao"
+    if row.get("Camera_MP", 0) >= 48 or price > 20000000:
+        return "Phân khúc camera & thiết kế cao cấp"
     if row.get("RAM", 0) >= 8:
-        return "Phân khúc hiệu năng"
-    return "Phân khúc phổ thông"
+        return "Phân khúc hiệu năng & gaming"
+    return "Phân khúc phổ thông thông thường"
 
 
 def run(input_path: Path) -> None:
