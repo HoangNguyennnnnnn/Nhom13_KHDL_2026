@@ -86,7 +86,7 @@ def preprocess_products(path: Path) -> pd.DataFrame:
         df["Is_Holiday"] = dates.dt.strftime("%m-%d").isin(HOLIDAYS_MM_DD).astype(int)
     if "Product_ID" in df.columns:
         df = df.dropna(subset=["Product_ID"])
-    object_cols = df.select_dtypes(include=["object"]).columns
+    object_cols = df.select_dtypes(include=["object", "string"]).columns
     df[object_cols] = df[object_cols].fillna("unknown")
     return df
 
