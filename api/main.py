@@ -10,7 +10,10 @@ from typing import Any
 import joblib
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 
 STATE: dict[str, Any] = {}
@@ -21,6 +24,10 @@ class ForecastRequest(BaseModel):
     current_price: float = Field(gt=0)
     discount_rate: float = Field(ge=0, le=1)
     sentiment_score_yesterday: float = Field(ge=0, le=1)
+
+
+class SentimentRequest(BaseModel):
+    text: str
 
 
 def load_pickle(path: str):
@@ -34,11 +41,54 @@ async def lifespan(app: FastAPI):
     STATE["products"] = pd.read_csv("data-project/processed/products_clustered.csv") if Path("data-project/processed/products_clustered.csv").exists() else pd.DataFrame()
     STATE["customers"] = pd.read_csv("data-project/processed/customers_rfm.csv") if Path("data-project/processed/customers_rfm.csv").exists() else pd.DataFrame()
     STATE["rules"] = pd.read_csv("data-project/processed/association_rules.csv") if Path("data-project/processed/association_rules.csv").exists() else pd.DataFrame()
+    STATE["tfidf"] = load_pickle("models/sentiment/tfidf_vectorizer.pkl")
+    STATE["sentiment_model"] = load_pickle("models/sentiment/rf_classifier.pkl")
+    
+    # Load teencode mapping
+    teencode_path = Path("data-project/teencode_dict.json")
+    import json
+    STATE["teencode"] = json.loads(teencode_path.read_text(encoding="utf-8")) if teencode_path.exists() else {}
     yield
     STATE.clear()
 
 
 app = FastAPI(title="TGDD Customer Sentiment & Sales Forecasting API", version="1.0.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+def _ensure_pca_coords(df: pd.DataFrame) -> pd.DataFrame:
+    """Attach PC1/PC2 for plotting when processed file does not contain them yet."""
+    out = df.copy()
+    if "PC1" in out.columns and "PC2" in out.columns and out[["PC1", "PC2"]].notna().any().all():
+        return out
+
+    feature_cols = [
+        c
+        for c in ["RAM", "ROM", "Battery", "Camera_MP", "Discounted_Price", "Avg_Star_Rating", "Total_Reviews"]
+        if c in out.columns
+    ]
+    if len(feature_cols) < 2 or len(out) < 2:
+        out["PC1"] = 0.0
+        out["PC2"] = 0.0
+        return out
+
+    X = out[feature_cols].apply(pd.to_numeric, errors="coerce")
+    X = X.fillna(X.median(numeric_only=True)).fillna(0)
+    X_scaled = StandardScaler().fit_transform(X)
+    coords = PCA(n_components=2, random_state=42).fit_transform(X_scaled)
+    out["PC1"] = coords[:, 0]
+    out["PC2"] = coords[:, 1]
+    return out
 
 
 @app.post("/api/v1/forecast/sales")
@@ -93,7 +143,27 @@ def product_clusters():
     df = STATE.get("products", pd.DataFrame())
     if df.empty:
         return []
-    cols = [col for col in ["Product_ID", "Brand", "cluster_id", "cluster_name", "RAM", "ROM", "Battery", "Camera_MP", "Discounted_Price"] if col in df.columns]
+    df = _ensure_pca_coords(df)
+    cols = [
+        col
+        for col in [
+            "Product_ID",
+            "Name",
+            "Brand",
+            "cluster_id",
+            "cluster_name",
+            "RAM",
+            "ROM",
+            "Battery",
+            "Camera_MP",
+            "Discounted_Price",
+            "Avg_Star_Rating",
+            "Total_Reviews",
+            "PC1",
+            "PC2",
+        ]
+        if col in df.columns
+    ]
     return df[cols].to_dict(orient="records")
 
 
@@ -112,3 +182,35 @@ def cross_sell(product_id: str):
         }
         for _, row in matched.iterrows()
     ]
+
+
+@app.post("/api/v1/sentiment/predict")
+def predict_sentiment(body: SentimentRequest):
+    tfidf = STATE.get("tfidf")
+    model = STATE.get("sentiment_model")
+    teencode = STATE.get("teencode", {})
+    if not tfidf or not model:
+        raise HTTPException(status_code=503, detail="Sentiment analysis model is not loaded")
+        
+    text = str(body.text).lower()
+    import re
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"https?://\S+|www\.\S+", " ", text)
+    text = re.sub(r"[^0-9a-zA-ZÀ-ỹ\s]", " ", text)
+    
+    words = text.split()
+    cleaned_words = [teencode.get(w, w) for w in words]
+    cleaned_text = " ".join(cleaned_words)
+    
+    # Vectorize and predict
+    X_vec = tfidf.transform([cleaned_text])
+    prob = float(model.predict_proba(X_vec)[0][list(model.classes_).index(1)])
+    
+    label = 1 if prob >= 0.5 else 0
+    confidence = prob if label == 1 else (1.0 - prob)
+    
+    return {
+        "label": label,
+        "confidence": confidence,
+        "cleaned_text": cleaned_text
+    }

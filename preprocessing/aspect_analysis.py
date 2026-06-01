@@ -112,19 +112,42 @@ def analyze_aspects(reviews_path: Path, output_path: Path) -> None:
     df["Star_Rating"] = pd.to_numeric(df["Star_Rating"], errors="coerce").fillna(5)
     
     # Group reviews by product
+    teencode_path = Path("data-project/teencode_dict.json")
+    teencode = {}
+    if teencode_path.exists():
+        try:
+            with open(teencode_path, "r", encoding="utf-8") as f:
+                teencode = json.load(f)
+        except Exception:
+            pass
+
+    # Helper function to clean and map teencode for aspect text
+    def clean_text_with_teencode(t: str) -> str:
+        if pd.isna(t):
+            return ""
+        t = str(t).lower()
+        t = re.sub(r"<[^>]+>", " ", t)
+        t = re.sub(r"https?://\S+|www\.\S+", " ", t)
+        t = re.sub(r"[^0-9a-zA-ZÀ-ỹ\s]", " ", t)
+        tokens = t.split()
+        tokens = [teencode.get(tok, tok) for tok in tokens]
+        return re.sub(r"\s+", " ", " ".join(tokens)).strip()
+
     results = {}
-    
+
     for product_id, group in df.groupby("Product_ID"):
         product_name = group["Product_Name"].iloc[0] if "Product_Name" in group.columns else product_id
         
         aspect_data = {asp: {"pos_weight": 0.0, "total_weight": 0.0, "clauses": []} for asp in ASPECT_KEYWORDS}
         
         for _, row in group.iterrows():
-            text = row["Review_Text"]
+            raw_text = row["Review_Text"]
             rating = row["Star_Rating"]
             weight = 1 + int(row["Helpfulness_Count"])  # weigh heavily liked reviews
             
-            clause_sentiments = extract_aspect_sentiments(text, rating)
+            # Preprocess raw_text with teencode dictionary before extracting aspect sentiments
+            clean_t = clean_text_with_teencode(raw_text)
+            clause_sentiments = extract_aspect_sentiments(clean_t, rating)
             for item in clause_sentiments:
                 asp = item["Aspect"]
                 sentiment = item["Sentiment"]

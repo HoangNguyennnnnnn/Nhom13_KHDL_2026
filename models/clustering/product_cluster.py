@@ -18,20 +18,21 @@ FEATURES = ["RAM", "ROM", "Battery", "Camera_MP", "Discounted_Price", "Avg_Star_
 
 
 def cluster_name(row: pd.Series) -> str:
-    # Upgraded cluster tagging rules utilizing Avg_Star_Rating and Total_Reviews
     price = row.get("Discounted_Price", 0)
-    rating = row.get("Avg_Star_Rating", 0)
-    reviews = row.get("Total_Reviews", 0)
+    ram = row.get("RAM", 4.0)
     
-    if rating >= 4.7 and reviews >= 10:
-        return "Sản phẩm Flagship được yêu thích cực cao"
-    if row.get("Battery", 0) >= 5000 and price <= row.get("_median_price", 0):
-        return "Phân khúc pin trâu giá rẻ"
-    if row.get("Camera_MP", 0) >= 48 or price > 20000000:
-        return "Phân khúc camera & thiết kế cao cấp"
-    if row.get("RAM", 0) >= 8:
-        return "Phân khúc hiệu năng & gaming"
-    return "Phân khúc phổ thông thông thường"
+    if price < 1500000:
+        return "Điện thoại giá rẻ - Phổ thông cơ bản"
+    elif price < 6000000:
+        if ram >= 6:
+            return "Tầm trung - Cấu hình tốt & Pin khoẻ"
+        return "Tầm trung - Tiết kiệm & Đủ dùng"
+    elif price < 15000000:
+        if ram >= 8:
+            return "Cận cao cấp - Hiệu năng & Đa năng"
+        return "Cận cao cấp - Thiết kế & Đủ dùng"
+    else:
+        return "Cao cấp - Siêu phẩm công nghệ"
 
 
 def run(input_path: Path) -> None:
@@ -52,9 +53,14 @@ def run(input_path: Path) -> None:
     best_k = max(scores, key=lambda row: row["silhouette"])["k"] if scores else 2
     model = KMeans(n_clusters=best_k, random_state=SEED, n_init=20)
     df["cluster_id"] = model.fit_predict(X_scaled)
-    df["_median_price"] = pd.to_numeric(df.get("Discounted_Price", 0), errors="coerce").median()
     df["cluster_name"] = df.apply(cluster_name, axis=1)
-    df = df.drop(columns=["_median_price"])
+    
+    # Run PCA to add 2D coordinates directly to products_clustered.csv
+    from sklearn.decomposition import PCA
+    pca = PCA(n_components=2, random_state=SEED)
+    coords = pca.fit_transform(X_scaled)
+    df["PC1"] = coords[:, 0]
+    df["PC2"] = coords[:, 1]
 
     Path("models/clustering").mkdir(parents=True, exist_ok=True)
     joblib.dump({"scaler": scaler, "model": model, "features": feature_cols}, "models/clustering/kmeans_product.pkl")

@@ -27,7 +27,7 @@ ASPECT_KEYWORDS = {
 
 def load_data(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
-    text_col = "Review_Text_Segmented" if "Review_Text_Segmented" in df.columns else "Review_Text"
+    text_col = "Review_Text_Clean" if "Review_Text_Clean" in df.columns else "Review_Text"
     if "label" not in df.columns:
         raise ValueError("reviews_clean.csv must contain a label column")
     df = df.dropna(subset=[text_col, "label"]).copy()
@@ -55,8 +55,8 @@ def train(path: Path) -> None:
     df = load_data(path).reset_index(drop=True)
     pipeline = Pipeline(
         steps=[
-            ("tfidf", TfidfVectorizer(max_features=10000, ngram_range=(1, 2))),
-            ("rf", RandomForestClassifier(n_estimators=300, random_state=SEED, n_jobs=-1, class_weight="balanced")),
+            ("tfidf", TfidfVectorizer(max_features=5000, ngram_range=(1, 2))),
+            ("rf", RandomForestClassifier(class_weight="balanced", random_state=SEED, n_estimators=100, max_depth=15, n_jobs=-1)),
         ]
     )
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
