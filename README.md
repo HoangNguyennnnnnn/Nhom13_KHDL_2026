@@ -42,15 +42,8 @@ python scraper/tgdd_scraper.py --limit 30
 python preprocessing/preprocess.py
 python models/sentiment/train_tfidf_rf.py
 python models/clustering/product_cluster.py
-python models/clustering/customer_rfm.py --input data-project/raw/purchases.csv
 python models/apriori/cross_sell.py --input data-project/raw/baskets.csv
 python models/forecasting/train_xgboost.py --trials 100
-```
-
-Huấn luyện PhoBERT tùy chọn:
-
-```bash
-python models/sentiment/train_phobert.py --epochs 2 --batch-size 8
 ```
 
 ## Chạy API

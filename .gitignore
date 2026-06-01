@@ -3,10 +3,17 @@ __pycache__/
 .venv/
 .env
 .DS_Store
-data-project/raw/*.csv
-data-project/processed/*.csv
+# Project specific ignores
+data-project/raw/*
+data-project/processed/*
+data-project/debug_*.txt
+data-project/*.txt
+debug_*.py
+*.html
+*.log
+*.err
+# Models & Dashboard
 models/**/*.pkl
-models/sentiment/phobert_model/
 dashboard/node_modules/
 dashboard/.next/
 dashboard/dev.db
