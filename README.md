@@ -40,6 +40,8 @@ Với Selenium, cần cài Chrome và Chromedriver tương thích. Với PhoBERT
 ```bash
 python scraper/tgdd_scraper.py --limit 30
 python preprocessing/preprocess.py
+python preprocessing/aspect_analysis.py
+python preprocessing/customer_service_analysis.py
 python models/sentiment/train_tfidf_rf.py
 python models/clustering/product_cluster.py
 python models/apriori/cross_sell.py --input data-project/raw/baskets.csv
