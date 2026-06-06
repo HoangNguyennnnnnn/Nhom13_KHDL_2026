@@ -220,10 +220,19 @@ def predict_sentiment(body: SentimentRequest):
     cleaned_words = [teencode.get(w, w) for w in words]
     cleaned_text = " ".join(cleaned_words)
     
-    # Vectorize and predict. Prefer class 1 when available; otherwise fall back safely.
+    # Extract underthesea sentiment
+    import underthesea
+    from scipy.sparse import hstack, csr_matrix
+    res = underthesea.sentiment(cleaned_text)
+    val = 1.0 if res == "positive" else 0.0 if res == "negative" else 0.5
+    X_uts = csr_matrix([[val]])
+
+    # Vectorize and combine features
     X_vec = tfidf.transform([cleaned_text])
+    X_combined = hstack([X_vec, X_uts])
+    
     if hasattr(model, "predict_proba"):
-        probabilities = model.predict_proba(X_vec)[0]
+        probabilities = model.predict_proba(X_combined)[0]
         classes = list(getattr(model, "classes_", []))
         if 1 in classes:
             prob = float(probabilities[classes.index(1)])
@@ -234,7 +243,7 @@ def predict_sentiment(body: SentimentRequest):
         else:
             prob = float(max(probabilities))
     else:
-        pred = model.predict(X_vec)[0]
+        pred = model.predict(X_combined)[0]
         prob = 1.0 if str(pred) in {"1", "true", "positive", "pos"} else 0.0
     
     label = 1 if prob >= 0.5 else 0

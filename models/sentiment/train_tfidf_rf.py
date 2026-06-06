@@ -28,6 +28,8 @@ from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import VotingClassifier
 from sklearn.metrics import f1_score, precision_score, recall_score
 from sklearn.model_selection import StratifiedKFold
+from scipy.sparse import hstack, csr_matrix
+import underthesea
 
 
 SEED = 42
@@ -38,6 +40,17 @@ ASPECT_KEYWORDS = {
     "Camera": ["camera", "ảnh", "chụp", "quay"],
     "Giá_cả": ["giá", "rẻ", "đắt", "tiền"],
 }
+
+
+def get_uts_feature(texts: pd.Series) -> csr_matrix:
+    """Extract pretrained general sentiment feature using underthesea."""
+    features = []
+    for text in texts:
+        res = underthesea.sentiment(str(text))
+        val = 1.0 if res == "positive" else 0.0 if res == "negative" else 0.5
+        features.append([val])
+    return csr_matrix(features)
+
 
 
 def build_vectorizer() -> TfidfVectorizer:
@@ -95,6 +108,7 @@ def score_aspects(text: str, sentiment_score: float) -> dict[str, float]:
     return scores
 
 
+
 def _positive_index(classifier) -> int:
     classes = list(classifier.classes_)
     if 1 in classes:
@@ -128,10 +142,17 @@ def train(path: Path) -> None:
         for fold, (train_idx, valid_idx) in enumerate(skf.split(X_text, y), start=1):
             vec = build_vectorizer()
             clf = build_classifier()
+            
             X_train_vec = vec.fit_transform(X_text.iloc[train_idx])
+            X_train_uts = get_uts_feature(X_text.iloc[train_idx])
+            X_train_combined = hstack([X_train_vec, X_train_uts])
+            
             X_val_vec = vec.transform(X_text.iloc[valid_idx])
-            clf.fit(X_train_vec, y.iloc[train_idx], sample_weight=weights.iloc[train_idx].values)
-            pred = clf.predict(X_val_vec)
+            X_val_uts = get_uts_feature(X_text.iloc[valid_idx])
+            X_val_combined = hstack([X_val_vec, X_val_uts])
+            
+            clf.fit(X_train_combined, y.iloc[train_idx], sample_weight=weights.iloc[train_idx].values)
+            pred = clf.predict(X_val_combined)
             rows.append(
                 {
                     "fold": fold,
@@ -147,9 +168,11 @@ def train(path: Path) -> None:
     vectorizer = build_vectorizer()
     classifier = build_classifier()
     X_all_vec = vectorizer.fit_transform(X_text)
-    classifier.fit(X_all_vec, y, sample_weight=weights.values)
+    X_all_uts = get_uts_feature(X_text)
+    X_all_combined = hstack([X_all_vec, X_all_uts])
+    classifier.fit(X_all_combined, y, sample_weight=weights.values)
 
-    probs = classifier.predict_proba(X_all_vec)[:, _positive_index(classifier)]
+    probs = classifier.predict_proba(X_all_combined)[:, _positive_index(classifier)]
     df["Sentiment_Score"] = probs
     df["Sentiment_Label"] = np.where(probs >= 0.5, 1, 0)
     aspect_rows = [score_aspects(text, score) for text, score in zip(df["_text"], probs)]
