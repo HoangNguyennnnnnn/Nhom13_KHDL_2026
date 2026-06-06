@@ -18,15 +18,16 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-
 import joblib
 import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
+from sklearn.svm import LinearSVC
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.ensemble import VotingClassifier
 from sklearn.metrics import f1_score, precision_score, recall_score
 from sklearn.model_selection import StratifiedKFold
-from sklearn.pipeline import FeatureUnion
 
 
 SEED = 42
@@ -40,29 +41,34 @@ ASPECT_KEYWORDS = {
 
 
 def build_vectorizer() -> TfidfVectorizer:
-    """Word-level TF-IDF; robust and prevents sparse character n-gram overfit."""
+    """Word-level TF-IDF vectorizer using 1-2 grams."""
     return TfidfVectorizer(
         analyzer="word",
         ngram_range=(1, 2),
-        max_features=5000,
         min_df=2,
-        sublinear_tf=True,
     )
 
 
-def build_classifier() -> LogisticRegression:
-    return LogisticRegression(
-        C=4.0,
-        class_weight="balanced",
-        max_iter=2000,
-        random_state=SEED,
-        n_jobs=-1,
+def build_classifier() -> VotingClassifier:
+    """VotingClassifier ensemble of Calibrated LinearSVC and Logistic Regression."""
+    lr = LogisticRegression(class_weight="balanced", random_state=SEED, max_iter=1000)
+    svc = CalibratedClassifierCV(LinearSVC(class_weight="balanced", random_state=SEED))
+    return VotingClassifier(
+        estimators=[
+            ("lr", lr),
+            ("svc", svc),
+        ],
+        voting="soft",
     )
 
 
 def load_data(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
-    text_col = "Review_Text_Clean" if "Review_Text_Clean" in df.columns else "Review_Text"
+    text_col = (
+        "Review_Text_Segmented"
+        if "Review_Text_Segmented" in df.columns
+        else ("Review_Text_Clean" if "Review_Text_Clean" in df.columns else "Review_Text")
+    )
     if "label" not in df.columns:
         raise ValueError("reviews_clean.csv must contain a label column")
     df = df.dropna(subset=[text_col, "label"]).copy()
