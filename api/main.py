@@ -17,6 +17,16 @@ from sklearn.preprocessing import StandardScaler
 
 
 STATE: dict[str, Any] = {}
+DEFAULT_FORECAST_FEATURES = [
+    "Discounted_Price",
+    "Discount_Rate",
+    "Avg_Star_Rating",
+    "Sentiment_Score",
+    "Day_of_Week",
+    "Is_Weekend",
+    "Is_Holiday",
+    "Sales_Volume_7d_mean",
+]
 
 
 class ForecastRequest(BaseModel):
@@ -94,10 +104,16 @@ def _ensure_pca_coords(df: pd.DataFrame) -> pd.DataFrame:
 @app.post("/api/v1/forecast/sales")
 def forecast_sales(body: ForecastRequest):
     bundle = STATE.get("forecast")
-    if not bundle:
+    if bundle is None:
         raise HTTPException(status_code=503, detail="Forecast model is not trained")
-    model = bundle["model"]
-    features = bundle["features"]
+    if isinstance(bundle, dict):
+        model = bundle.get("model")
+        features = bundle.get("features") or DEFAULT_FORECAST_FEATURES
+    else:
+        model = bundle
+        features = DEFAULT_FORECAST_FEATURES
+    if model is None:
+        raise HTTPException(status_code=503, detail="Forecast model is not trained")
     base = {
         "Discounted_Price": body.current_price,
         "Discount_Rate": body.discount_rate,
@@ -132,10 +148,11 @@ def forecast_sales(body: ForecastRequest):
 @app.get("/api/v1/customers/churn_alert")
 def churn_alert():
     df = STATE.get("customers", pd.DataFrame())
-    if df.empty:
+    if df.empty or "churn_probability" not in df.columns:
         return []
+    prob = pd.to_numeric(df["churn_probability"], errors="coerce").fillna(0)
     cols = [col for col in ["User_ID", "email", "churn_probability", "rfm_segment"] if col in df.columns]
-    return df[df["churn_probability"] > 0.7][cols].to_dict(orient="records")
+    return df.loc[prob > 0.7, cols].to_dict(orient="records")
 
 
 @app.get("/api/v1/products/clusters")
@@ -170,9 +187,10 @@ def product_clusters():
 @app.get("/api/v1/products/{product_id}/cross_sell")
 def cross_sell(product_id: str):
     rules = STATE.get("rules", pd.DataFrame())
-    if rules.empty:
+    required = {"antecedent", "consequent", "confidence", "lift"}
+    if rules.empty or not required.issubset(rules.columns):
         return []
-    matched = rules[rules["antecedent"].astype(str).str.split(",").map(lambda items: product_id in items)]
+    matched = rules[rules["antecedent"].astype(str).str.split(",").map(lambda items: product_id in [item.strip() for item in items])]
     return [
         {
             "accessory_id": row["consequent"],
@@ -189,7 +207,7 @@ def predict_sentiment(body: SentimentRequest):
     tfidf = STATE.get("tfidf")
     model = STATE.get("sentiment_model")
     teencode = STATE.get("teencode", {})
-    if not tfidf or not model:
+    if tfidf is None or model is None:
         raise HTTPException(status_code=503, detail="Sentiment analysis model is not loaded")
         
     text = str(body.text).lower()
@@ -202,9 +220,22 @@ def predict_sentiment(body: SentimentRequest):
     cleaned_words = [teencode.get(w, w) for w in words]
     cleaned_text = " ".join(cleaned_words)
     
-    # Vectorize and predict
+    # Vectorize and predict. Prefer class 1 when available; otherwise fall back safely.
     X_vec = tfidf.transform([cleaned_text])
-    prob = float(model.predict_proba(X_vec)[0][list(model.classes_).index(1)])
+    if hasattr(model, "predict_proba"):
+        probabilities = model.predict_proba(X_vec)[0]
+        classes = list(getattr(model, "classes_", []))
+        if 1 in classes:
+            prob = float(probabilities[classes.index(1)])
+        elif "1" in classes:
+            prob = float(probabilities[classes.index("1")])
+        elif len(probabilities) == 2:
+            prob = float(probabilities[-1])
+        else:
+            prob = float(max(probabilities))
+    else:
+        pred = model.predict(X_vec)[0]
+        prob = 1.0 if str(pred) in {"1", "true", "positive", "pos"} else 0.0
     
     label = 1 if prob >= 0.5 else 0
     confidence = prob if label == 1 else (1.0 - prob)

@@ -68,7 +68,7 @@ def extract_aspect_sentiments(review_text: str, rating: float) -> list[dict]:
             
         for aspect, keywords in ASPECT_KEYWORDS.items():
             # Check if any keyword matches this clause
-            if any(re.search(rf"\b{kw}\b", clause) for kw in keywords):
+            if any(re.search(rf"\b{re.escape(kw)}\b", clause) for kw in keywords):
                 # Classify strictly to prevent wrong overlaps (e.g. if 'pin tụt' is in clause, don't class as Performance just because of 'tụt')
                 if aspect == "Performance/OS" and any(pb in clause for pb in ["pin", "sạc", "sac"]):
                     continue
@@ -79,8 +79,8 @@ def extract_aspect_sentiments(review_text: str, rating: float) -> list[dict]:
                 sentiment = 1 if rating >= 4 else (0 if rating <= 2 else 0.5)
                 
                 # Check for explicit cues in the specific clause
-                has_pos = any(re.search(rf"\b{cue}\b", clause) for cue in POSITIVE_CUES)
-                has_neg = any(re.search(rf"\b{cue}\b", clause) for cue in NEGATIVE_CUES)
+                has_pos = any(re.search(rf"\b{re.escape(cue)}\b", clause) for cue in POSITIVE_CUES)
+                has_neg = any(re.search(rf"\b{re.escape(cue)}\b", clause) for cue in NEGATIVE_CUES)
                 
                 if has_neg and not has_pos:
                     sentiment = 0

@@ -1,4 +1,18 @@
-"""Train a CPU-friendly TF-IDF + Random Forest sentiment baseline."""
+"""Train a CPU-friendly Vietnamese sentiment classifier.
+
+Upgrade notes (still 100% CPU, no GPU required):
+  - TF-IDF now combines *word* (1-2 gram) and *character* (3-5 gram) features.
+    Character n-grams are robust to Vietnamese teencode / misspellings and
+    usually lift accuracy noticeably over a word-only vectoriser.
+  - The estimator is a calibrated Logistic Regression, which is faster and
+    typically more accurate than a Random Forest on sparse TF-IDF text while
+    still exposing ``predict_proba`` / ``classes_`` for the API and dashboards.
+  - Cross-validation folds adapt to the data so tiny datasets no longer crash.
+
+The artefacts keep their original filenames (``tfidf_vectorizer.pkl`` and
+``rf_classifier.pkl``) so the FastAPI backend and Streamlit/Next.js apps load
+them without any change.
+"""
 
 from __future__ import annotations
 
@@ -8,11 +22,11 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import f1_score, precision_score, recall_score
 from sklearn.model_selection import StratifiedKFold
-from sklearn.pipeline import Pipeline
+from sklearn.pipeline import FeatureUnion
 
 
 SEED = 42
@@ -25,6 +39,44 @@ ASPECT_KEYWORDS = {
 }
 
 
+def build_vectorizer() -> FeatureUnion:
+    """Word + character TF-IDF; robust to teencode and short reviews."""
+    return FeatureUnion(
+        [
+            (
+                "word",
+                TfidfVectorizer(
+                    analyzer="word",
+                    ngram_range=(1, 2),
+                    max_features=20000,
+                    min_df=1,
+                    sublinear_tf=True,
+                ),
+            ),
+            (
+                "char",
+                TfidfVectorizer(
+                    analyzer="char_wb",
+                    ngram_range=(3, 5),
+                    max_features=20000,
+                    min_df=1,
+                    sublinear_tf=True,
+                ),
+            ),
+        ]
+    )
+
+
+def build_classifier() -> LogisticRegression:
+    return LogisticRegression(
+        C=4.0,
+        class_weight="balanced",
+        max_iter=2000,
+        random_state=SEED,
+        n_jobs=-1,
+    )
+
+
 def load_data(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
     text_col = "Review_Text_Clean" if "Review_Text_Clean" in df.columns else "Review_Text"
@@ -33,7 +85,10 @@ def load_data(path: Path) -> pd.DataFrame:
     df = df.dropna(subset=[text_col, "label"]).copy()
     df["label"] = df["label"].astype(int)
     df["_text"] = df[text_col].astype(str)
-    
+
+    # Drop empty texts that carry no signal.
+    df = df[df["_text"].str.strip().astype(bool)].reset_index(drop=True)
+
     # Extract helpfulness weight
     if "Helpfulness_Count" in df.columns:
         df["weight"] = pd.to_numeric(df["Helpfulness_Count"], errors="coerce").fillna(0).astype(int) + 1
@@ -51,48 +106,61 @@ def score_aspects(text: str, sentiment_score: float) -> dict[str, float]:
     return scores
 
 
+def _positive_index(classifier) -> int:
+    classes = list(classifier.classes_)
+    if 1 in classes:
+        return classes.index(1)
+    if "1" in classes:
+        return classes.index("1")
+    return len(classes) - 1
+
+
 def train(path: Path) -> None:
     df = load_data(path).reset_index(drop=True)
-    pipeline = Pipeline(
-        steps=[
-            ("tfidf", TfidfVectorizer(max_features=5000, ngram_range=(1, 2))),
-            ("rf", RandomForestClassifier(class_weight="balanced", random_state=SEED, n_estimators=100, max_depth=15, n_jobs=-1)),
-        ]
-    )
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
-    rows = []
-    
+
+    class_counts = df["label"].value_counts()
+    if len(class_counts) < 2:
+        raise ValueError(
+            "Need at least two sentiment classes to train. "
+            f"Found only: {class_counts.to_dict()}"
+        )
+
     X_text = df["_text"]
     y = df["label"]
     weights = df["weight"]
-    
-    for fold, (train_idx, valid_idx) in enumerate(skf.split(X_text, y), start=1):
-        # We manually vectorise first to pass sample_weight to the classifier
-        tfidf = pipeline.named_steps["tfidf"]
-        rf = pipeline.named_steps["rf"]
-        
-        X_train_vec = tfidf.fit_transform(X_text.iloc[train_idx])
-        X_val_vec = tfidf.transform(X_text.iloc[valid_idx])
-        
-        rf.fit(X_train_vec, y.iloc[train_idx], sample_weight=weights.iloc[train_idx].values)
-        pred = rf.predict(X_val_vec)
-        
-        rows.append(
-            {
-                "fold": fold,
-                "f1": f1_score(y.iloc[valid_idx], pred, zero_division=0),
-                "precision": precision_score(y.iloc[valid_idx], pred, zero_division=0),
-                "recall": recall_score(y.iloc[valid_idx], pred, zero_division=0),
-            }
-        )
-        
+
+    # Adapt the number of folds so rare classes never break StratifiedKFold.
+    min_class = int(class_counts.min())
+    n_splits = max(2, min(5, min_class))
+
+    rows = []
+    if min_class >= 2:
+        skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=SEED)
+        for fold, (train_idx, valid_idx) in enumerate(skf.split(X_text, y), start=1):
+            vec = build_vectorizer()
+            clf = build_classifier()
+            X_train_vec = vec.fit_transform(X_text.iloc[train_idx])
+            X_val_vec = vec.transform(X_text.iloc[valid_idx])
+            clf.fit(X_train_vec, y.iloc[train_idx], sample_weight=weights.iloc[train_idx].values)
+            pred = clf.predict(X_val_vec)
+            rows.append(
+                {
+                    "fold": fold,
+                    "f1": f1_score(y.iloc[valid_idx], pred, zero_division=0),
+                    "precision": precision_score(y.iloc[valid_idx], pred, zero_division=0),
+                    "recall": recall_score(y.iloc[valid_idx], pred, zero_division=0),
+                }
+            )
+    else:
+        print("[warn] A class has a single sample; skipping cross-validation.")
+
     # Final fit on all data
-    tfidf = pipeline.named_steps["tfidf"]
-    rf = pipeline.named_steps["rf"]
-    X_all_vec = tfidf.fit_transform(X_text)
-    rf.fit(X_all_vec, y, sample_weight=weights.values)
-    
-    probs = rf.predict_proba(X_all_vec)[:, list(rf.classes_).index(1)]
+    vectorizer = build_vectorizer()
+    classifier = build_classifier()
+    X_all_vec = vectorizer.fit_transform(X_text)
+    classifier.fit(X_all_vec, y, sample_weight=weights.values)
+
+    probs = classifier.predict_proba(X_all_vec)[:, _positive_index(classifier)]
     df["Sentiment_Score"] = probs
     df["Sentiment_Label"] = np.where(probs >= 0.5, 1, 0)
     aspect_rows = [score_aspects(text, score) for text, score in zip(df["_text"], probs)]
@@ -100,9 +168,10 @@ def train(path: Path) -> None:
 
     out_dir = Path("models/sentiment")
     out_dir.mkdir(parents=True, exist_ok=True)
-    joblib.dump(tfidf, out_dir / "tfidf_vectorizer.pkl")
-    joblib.dump(rf, out_dir / "rf_classifier.pkl")
+    joblib.dump(vectorizer, out_dir / "tfidf_vectorizer.pkl")
+    joblib.dump(classifier, out_dir / "rf_classifier.pkl")
     pd.DataFrame(rows).to_csv(out_dir / "tfidf_rf_metrics.csv", index=False)
+    Path("data-project/processed").mkdir(parents=True, exist_ok=True)
     df.to_csv("data-project/processed/reviews_scored.csv", index=False)
 
 

@@ -30,9 +30,40 @@ HOLIDAYS_MM_DD = {"01-01", "04-30", "05-01", "09-02"}
 def parse_number(value) -> float:
     if pd.isna(value):
         return np.nan
-    text = str(value).lower().replace(",", ".")
-    digits = re.sub(r"[^\d.]", "", text)
-    return float(digits) if digits else np.nan
+    text = str(value).strip().lower()
+    if not text or text in {"nan", "none", "unknown"}:
+        return np.nan
+
+    multiplier = 1.0
+    if "triệu" in text or "trieu" in text or re.search(r"\d\s*m\b", text):
+        multiplier = 1_000_000.0
+    elif "nghìn" in text or "ngan" in text or re.search(r"\d\s*k\b", text):
+        multiplier = 1_000.0
+
+    cleaned = re.sub(r"[^\d.,-]", "", text)
+    if not cleaned or cleaned in {"-", ".", ","}:
+        return np.nan
+
+    negative = cleaned.startswith("-")
+    cleaned = cleaned.lstrip("-")
+    if "." in cleaned and "," in cleaned:
+        if cleaned.rfind(",") > cleaned.rfind("."):
+            normalized = cleaned.replace(".", "").replace(",", ".")
+        else:
+            normalized = cleaned.replace(",", "")
+    elif "." in cleaned or "," in cleaned:
+        sep = "." if "." in cleaned else ","
+        parts = cleaned.split(sep)
+        is_thousands = len(parts) > 2 or (len(parts) == 2 and len(parts[1]) == 3 and len(parts[0]) > 1)
+        normalized = "".join(parts) if is_thousands else (".".join(parts) if sep == "," else cleaned)
+    else:
+        normalized = cleaned
+
+    try:
+        number = float(normalized)
+    except ValueError:
+        return np.nan
+    return (-number if negative else number) * multiplier
 
 
 def normalize_units(df: pd.DataFrame) -> pd.DataFrame:
@@ -73,10 +104,10 @@ def extract_specs_from_name(name: str, price: float) -> dict[str, float]:
     ram, rom, battery, camera = 4.0, 128.0, 5000.0, 50.0  # reasonable defaults
     
     # 1. Parse RAM & ROM from patterns like "8GB/256GB" or "8GB-256GB" or "8g/256g"
-    m_pair = re.search(r"(\d+)\s*g[b]?\s*[-/]\s*(\d+)\s*g[b]?", name_lower)
+    m_pair = re.search(r"(\d+)\s*g[b]?\s*[-/]\s*(\d+)\s*(g[b]?|t[b]?)", name_lower)
     if m_pair:
         ram = float(m_pair.group(1))
-        rom = float(m_pair.group(2))
+        rom = float(m_pair.group(2)) * (1024 if m_pair.group(3).startswith("t") else 1)
     else:
         # Check single ROM pattern like "256GB" or "128GB"
         m_rom = re.search(r"(\d+)\s*g[b]?(?!\s*/)", name_lower)
