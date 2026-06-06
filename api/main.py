@@ -236,6 +236,17 @@ def predict_sentiment(body: SentimentRequest):
     else:
         pred = model.predict(X_vec)[0]
         prob = 1.0 if str(pred) in {"1", "true", "positive", "pos"} else 0.0
+
+    # Lexicon adjustment for extremely rare/unbalanced negative words in short reviews
+    NEG_WORDS = {"đểu", "tệ", "chán", "kém", "lỗi", "hỏng", "yếu", "đơ", "lag", "giật", "chậm", "tệ_hại", "quá_tệ", "hỏng_hóc", "vứt"}
+    POS_WORDS = {"tốt", "mượt", "ngon", "ưng", "đẹp", "thích", "nhanh", "ổn", "ok", "tuyệt", "chuẩn", "sướng"}
+    
+    words_set = set(cleaned_text.split())
+    has_neg = any(w in words_set for w in NEG_WORDS)
+    has_pos = any(w in words_set for w in POS_WORDS)
+    
+    if has_neg and not has_pos:
+        prob = max(0.05, min(0.35, prob - 0.5))
     
     label = 1 if prob >= 0.5 else 0
     confidence = prob if label == 1 else (1.0 - prob)

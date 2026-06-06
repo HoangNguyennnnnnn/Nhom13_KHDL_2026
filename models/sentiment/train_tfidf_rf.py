@@ -39,31 +39,14 @@ ASPECT_KEYWORDS = {
 }
 
 
-def build_vectorizer() -> FeatureUnion:
-    """Word + character TF-IDF; robust to teencode and short reviews."""
-    return FeatureUnion(
-        [
-            (
-                "word",
-                TfidfVectorizer(
-                    analyzer="word",
-                    ngram_range=(1, 2),
-                    max_features=20000,
-                    min_df=1,
-                    sublinear_tf=True,
-                ),
-            ),
-            (
-                "char",
-                TfidfVectorizer(
-                    analyzer="char_wb",
-                    ngram_range=(3, 5),
-                    max_features=20000,
-                    min_df=1,
-                    sublinear_tf=True,
-                ),
-            ),
-        ]
+def build_vectorizer() -> TfidfVectorizer:
+    """Word-level TF-IDF; robust and prevents sparse character n-gram overfit."""
+    return TfidfVectorizer(
+        analyzer="word",
+        ngram_range=(1, 2),
+        max_features=5000,
+        min_df=2,
+        sublinear_tf=True,
     )
 
 
