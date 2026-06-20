@@ -158,7 +158,7 @@ def prepare(input_path: Path | None = None) -> pd.DataFrame:
     df["Review_Text_Clean"] = df["Review_Text_NoNoise"].map(
         lambda value: clean_text(value, teencode)
     )
-    # Word-segmented form is what PhoBERT / TF-IDF both consume.
+    # Word-segmented form is what the TF-IDF vectorizer consumes.
     df["Review_Text_Segmented"] = df["Review_Text_Clean"].map(segment_vi)
     # Final feature column: segmentation + negation tagging (what the model trains on).
     df["Review_Text_Final"] = df["Review_Text_Segmented"].map(apply_negation_tagging)

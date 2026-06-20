@@ -1,11 +1,8 @@
 """Train the production 3-class sentiment model (TF-IDF + LogReg).
 
-Evidence-based choice: in feature_comparison.csv, TF-IDF (1-2 gram) lexical
-features beat frozen-PhoBERT and the hybrid on this dataset, because review
-sentiment is strongly lexical ("tốt", "tệ", "lỗi") and bigrams already capture
-common negations ("không tốt"). So the shipped model is TF-IDF + LogReg trained
-on the *cleaned, 3-class* data — this is the model the student owns, no GPU /
-fine-tuning needed.
+Review sentiment is strongly lexical ("tốt", "tệ", "lỗi") and TF-IDF bigrams
+already capture common negations ("không tốt"), so the model is TF-IDF (1-2 gram)
++ LogisticRegression trained on the cleaned, 3-class data. CPU-only, no GPU needed.
 
 Run prepare_sentiment.py first to produce reviews_labeled.csv.
 
