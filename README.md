@@ -133,6 +133,32 @@ npm run dev
 ```bash
 streamlit run streamlit_app/app.py
 ```
+* Địa chỉ truy cập: [http://localhost:8501](http://localhost:8501)
+
+---
+
+## 3.1. DEMO NHANH PHÂN TÍCH CẢM XÚC
+
+Điều kiện: đã chạy Bước 2.3 và 2.4 để có `models/sentiment/sentiment_clf.pkl`.
+
+**Cách 1 — Giao diện Streamlit (khuyến nghị khi demo):**
+```bash
+streamlit run streamlit_app/app.py
+```
+Mở tab **"Thử Nghiệm Mô Hình Sentiment"** → gõ một bình luận → bấm **"Phân tích ý kiến"**.
+Kết quả hiển thị: nhãn (Tích cực / Trung tính / Tiêu cực), độ tin cậy, xác suất cả 3 lớp, và văn bản sau khi làm sạch (cắt nhiễu `||`, tách từ, gắn phủ định).
+
+**Cách 2 — Gọi trực tiếp API:**
+```bash
+# Terminal 1: chạy backend
+python -m uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Terminal 2: gửi một bình luận
+curl -X POST http://127.0.0.1:8000/api/v1/sentiment/predict \
+  -H "Content-Type: application/json" \
+  -d '{"text": "máy không tốt, pin tụt nhanh, thất vọng"}'
+```
+Hoặc mở [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs), chọn `POST /api/v1/sentiment/predict` → "Try it out" → nhập bình luận → "Execute".
 
 ---
 
