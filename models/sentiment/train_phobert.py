@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 # Let unsupported ops fall back to CPU on Apple Silicon instead of crashing.
@@ -27,6 +28,12 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 import numpy as np
 import pandas as pd
 import torch
+
+# Cleaning helpers (to segment augmented sentences like the real data) + augmenter.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "preprocessing"))
+from preprocess import clean_text, segment_vi  # noqa: E402
+from augment import build_negation_examples  # noqa: E402
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 from sklearn.model_selection import train_test_split
 from transformers import (
@@ -81,7 +88,21 @@ def main() -> None:
     X_train, X_test, y_train, y_test = train_test_split(
         texts, labels, test_size=0.15, stratify=labels, random_state=SEED
     )
-    print(f"[train] train={len(X_train)}  test={len(X_test)}")
+
+    # Augment ONLY the train split with synthetic negation examples (test stays
+    # 100% real -> honest metrics). EDA showed phrases like "không tốt" appear
+    # in <10 reviews, so the model never learns them without this.
+    teencode_path = Path("data-project/teencode_dict.json")
+    teencode = json.loads(teencode_path.read_text(encoding="utf-8")) if teencode_path.exists() else {}
+    aug_raw, aug_labels = build_negation_examples()
+    aug_clean = [segment_vi(clean_text(t, teencode)) for t in aug_raw]
+    aug_clean = [t for t in aug_clean if t.strip()]
+    X_train = X_train + aug_clean
+    y_train = y_train + aug_labels[: len(aug_clean)]
+    print(
+        f"[train] train={len(X_train)} (incl. {len(aug_clean)} augmented)  "
+        f"test={len(X_test)} (real only)"
+    )
 
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
