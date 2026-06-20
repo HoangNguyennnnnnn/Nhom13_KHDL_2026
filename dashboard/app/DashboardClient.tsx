@@ -105,8 +105,10 @@ export default function DashboardClient({
   const [sentimentInput, setSentimentInput] = useState("");
   const [sentimentLoading, setSentimentLoading] = useState(false);
   const [sentimentResult, setSentimentResult] = useState<{
-    label: number;
+    label: number; // 0 = negative, 1 = neutral, 2 = positive
+    label_name: string;
     confidence: number;
+    probabilities?: Record<string, number>;
     cleaned_text: string;
   } | null>(null);
   const [sentimentError, setSentimentError] = useState("");
@@ -198,8 +200,8 @@ export default function DashboardClient({
   const getSortIndicator = (
     key: "name" | "brand" | "price" | "ramrom" | "rating" | "reviews",
   ) => {
-    if (compareSortBy !== key) return "↕";
-    return compareSortDir === "asc" ? "↑" : "↓";
+    if (compareSortBy !== key) return "";
+    return compareSortDir === "asc" ? "" : "";
   };
 
   // Filter products by brand and segment
@@ -314,37 +316,37 @@ export default function DashboardClient({
             className={activeTab === "phankhuc" ? "active" : ""}
             onClick={() => setActiveTab("phankhuc")}
           >
-            🎯 Phân Khúc K-Means & PCA
+            Phân Khúc K-Means & PCA
           </button>
           <button
             className={activeTab === "sentiment" ? "active" : ""}
             onClick={() => setActiveTab("sentiment")}
           >
-            💬 Ý Kiến Khách Hàng (Aspect)
+            Ý Kiến Khách Hàng (Aspect)
           </button>
           <button
             className={activeTab === "danhygia" ? "active" : ""}
             onClick={() => setActiveTab("danhygia")}
           >
-            📊 Độ Nhạy Giá & Khuyến Mãi
+            Độ Nhạy Giá & Khuyến Mãi
           </button>
           <button
             className={activeTab === "forecasting" ? "active" : ""}
             onClick={() => setActiveTab("forecasting")}
           >
-            🔮 Dự Báo Doanh Số (XGBoost)
+            Dự Báo Doanh Số (XGBoost)
           </button>
           <button
             className={activeTab === "sentiment_room" ? "active" : ""}
             onClick={() => setActiveTab("sentiment_room")}
           >
-            🤖 ML Sentiment Room
+            ML Sentiment Room
           </button>
           <button
             className={activeTab === "teencode" ? "active" : ""}
             onClick={() => setActiveTab("teencode")}
           >
-            📚 Từ Điển Teen Code
+            Từ Điển Teen Code
           </button>
         </nav>
       </aside>
@@ -374,7 +376,7 @@ export default function DashboardClient({
         {activeTab === "phankhuc" && (
           <div className="tab-pane animate-fade">
             <div className="pane-header">
-              <h2>🎯 Bản Đồ Phân Phân Khúc Điện Thoại 2D (K-Means & PCA)</h2>
+              <h2>Bản Đồ Phân Phân Khúc Điện Thoại 2D (K-Means & PCA)</h2>
               <div className="filters">
                 <label>Lọc Thương hiệu: </label>
                 <select
@@ -404,7 +406,7 @@ export default function DashboardClient({
             </div>
 
             <div className="explanation-box">
-              <h4>💡 Giải thích trực quan về mặt Khoa học Dữ liệu:</h4>
+              <h4>Giải thích trực quan về mặt Khoa học Dữ liệu:</h4>
               <ul>
                 <li>
                   <b>Trục Ngang (PC1):</b> Đại diện cho{" "}
@@ -485,7 +487,7 @@ export default function DashboardClient({
             </div>
 
             <div className="table-wrapper" style={{ marginTop: "16px" }}>
-              <h3>🔎 So sánh các sản phẩm trong cùng phân khúc</h3>
+              <h3>So sánh các sản phẩm trong cùng phân khúc</h3>
               {selectedSegment === "Tất cả" ? (
                 <p>
                   Chọn một phân khúc ở bộ lọc phía trên để mở bảng so sánh trực
@@ -562,7 +564,7 @@ export default function DashboardClient({
 
             {/* Products Table */}
             <div className="table-wrapper">
-              <h3>📋 Danh sách sản phẩm chi tiết theo Phân khúc</h3>
+              <h3>Danh sách sản phẩm chi tiết theo Phân khúc</h3>
               <table>
                 <thead>
                   <tr>
@@ -613,7 +615,7 @@ export default function DashboardClient({
           <div className="tab-pane animate-fade">
             <div className="pane-header">
               <h2>
-                💬 Phân Tích Ý Kiến Người Dùng & Ưu/Nhược Điểm Từng Sản Phẩm
+                Phân Tích Ý Kiến Người Dùng & Ưu/Nhược Điểm Từng Sản Phẩm
                 (Pros & Cons)
               </h2>
               <div className="filters">
@@ -635,7 +637,7 @@ export default function DashboardClient({
               <>
                 {/* Satisfaction scores bar chart */}
                 <div className="chart-wrapper">
-                  <h3>📊 Chỉ Số Hài Lòng Theo Khía Cạnh (%)</h3>
+                  <h3>Chỉ Số Hài Lòng Theo Khía Cạnh (%)</h3>
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart
                       data={aspectChartData}
@@ -669,7 +671,7 @@ export default function DashboardClient({
                 {/* Pros and Cons panels */}
                 <div className="pros-cons-grid">
                   <div className="panel strength">
-                    <h4>🌟 Ưu Điểm Nổi Bật (Strengths)</h4>
+                    <h4>Ưu Điểm Nổi Bật (Strengths)</h4>
                     <ul>
                       {Object.keys(selectedProdData.Aspects).map((aspect) => {
                         const details = selectedProdData.Aspects[aspect];
@@ -694,7 +696,7 @@ export default function DashboardClient({
                   </div>
 
                   <div className="panel weakness">
-                    <h4>⚠️ Điểm Cần Cải Thiện (Weaknesses)</h4>
+                    <h4>Điểm Cần Cải Thiện (Weaknesses)</h4>
                     <ul>
                       {Object.keys(selectedProdData.Aspects).map((aspect) => {
                         const details = selectedProdData.Aspects[aspect];
@@ -729,7 +731,7 @@ export default function DashboardClient({
         {activeTab === "danhygia" && (
           <div className="tab-pane animate-fade">
             <div className="pane-header">
-              <h2>📊 Độ Nhạy Giá & Lập Kế Hoạch Chiến Lược Khuyến Mãi</h2>
+              <h2>Độ Nhạy Giá & Lập Kế Hoạch Chiến Lược Khuyến Mãi</h2>
             </div>
 
             <div className="chart-wrapper">
@@ -751,7 +753,7 @@ export default function DashboardClient({
 
             {/* Elasticity Promo Simulator */}
             <div className="panel promo-simulator">
-              <h3>🎛️ Trình mô phỏng Kế hoạch Khuyến mãi thông minh</h3>
+              <h3>Trình mô phỏng Kế hoạch Khuyến mãi thông minh</h3>
               <div className="simulator-grid">
                 <div className="controls">
                   <label>1. Chọn Thương Hiệu: </label>
@@ -795,7 +797,7 @@ export default function DashboardClient({
                       const growthSign = growthPercent >= 0 ? "+" : "-";
                       return (
                         <div className="alert-success">
-                          <h4>🔮 Ước tính Kết quả cho {simulatorBrand}:</h4>
+                          <h4>Ước tính Kết quả cho {simulatorBrand}:</h4>
                           <ul>
                             <li>
                               Độ nhạy giá (Elasticity Coefficient):{" "}
@@ -839,14 +841,14 @@ export default function DashboardClient({
           <div className="tab-pane animate-fade">
             <div className="pane-header">
               <h2>
-                🔮 Mô Hình Học Máy Dự Báo Doanh Số Smartphone Tương Lai
+                Mô Hình Học Máy Dự Báo Doanh Số Smartphone Tương Lai
                 (XGBoost)
               </h2>
             </div>
 
             <div className="forecast-simulator-panel">
               <div className="form-column">
-                <h3>🕹️ Cấu Hình Máy Cần Dự Báo</h3>
+                <h3>Cấu Hình Máy Cần Dự Báo</h3>
 
                 <label>Sản phẩm (ID):</label>
                 <select
@@ -894,8 +896,8 @@ export default function DashboardClient({
                   disabled={forecasting}
                 >
                   {forecasting
-                    ? "⌛ Đang tính toán..."
-                    : "🔮 Chạy Dự Báo 7 Ngày"}
+                    ? "Đang tính toán..."
+                    : "Chạy Dự Báo 7 Ngày"}
                 </button>
                 {forecastError && (
                   <p style={{ color: "#e53e3e", marginTop: 12 }}>
@@ -905,7 +907,7 @@ export default function DashboardClient({
               </div>
 
               <div className="chart-column">
-                <h3>📈 Kết Quả Dự Báo Doanh Số (7 Ngày Tới)</h3>
+                <h3>Kết Quả Dự Báo Doanh Số (7 Ngày Tới)</h3>
                 {forecastResults.length > 0 ? (
                   <>
                     <ResponsiveContainer width="100%" height={250}>
@@ -973,13 +975,13 @@ export default function DashboardClient({
           <div className="tab-pane animate-fade">
             <div className="pane-header">
               <h2>
-                🤖 Trải Nghiệm Mô Hình Nhận Diện Ý Kiến Đánh Giá (TF-IDF +
+                Trải Nghiệm Mô Hình Nhận Diện Ý Kiến Đánh Giá (TF-IDF +
                 Random Forest)
               </h2>
             </div>
 
             <div className="explanation-box">
-              <h4>💡 Giải thích trực quan về mặt Khoa học Dữ liệu (NLP):</h4>
+              <h4>Giải thích trực quan về mặt Khoa học Dữ liệu (NLP):</h4>
               <ul>
                 <li>
                   Bình luận bạn nhập sẽ tự động chạy qua bộ dịch **Teen code &
@@ -998,7 +1000,7 @@ export default function DashboardClient({
               style={{ gridTemplateColumns: "1fr" }}
             >
               <div className="translator-panel">
-                <h3>⚡ Nhập đánh giá của khách hàng cần kiểm thử</h3>
+                <h3>Nhập đánh giá của khách hàng cần kiểm thử</h3>
                 <textarea
                   placeholder="Ví dụ: máy xài siu ngon, pin cực trâu k giật lag j cả, camera chụp rất nét, sạc pin hơi nóng máy tí..."
                   value={sentimentInput}
@@ -1012,8 +1014,8 @@ export default function DashboardClient({
                   style={{ marginTop: "16px" }}
                 >
                   {sentimentLoading
-                    ? "⌛ Đang phân tích cảm xúc..."
-                    : "🔥 Phân Tích Cảm Xúc ML"}
+                    ? "Đang phân tích cảm xúc..."
+                    : "Phân Tích Cảm Xúc ML"}
                 </button>
                 {sentimentError && (
                   <p style={{ color: "#e53e3e", marginTop: 12 }}>
@@ -1075,60 +1077,85 @@ export default function DashboardClient({
                       </div>
                     </div>
 
-                    <div
-                      style={{
-                        padding: "20px",
-                        borderRadius: "8px",
-                        backgroundColor:
-                          sentimentResult.label === 1 ? "#f0fff4" : "#fff5f5",
-                        border: `1px solid ${sentimentResult.label === 1 ? "#c6f6d5" : "#fed7d7"}`,
-                        textAlign: "center",
-                      }}
-                    >
-                      {sentimentResult.label === 1 ? (
-                        <h3 style={{ color: "#22543d" }}>
-                          🎉 Kết Quả: TÍCH CỰC (Positive)
-                        </h3>
-                      ) : (
-                        <h3 style={{ color: "#742a2a" }}>
-                          ⚠️ Kết Quả: TIÊU CỰC / GÓP Ý (Negative)
-                        </h3>
-                      )}
-
-                      <div style={{ marginTop: "16px" }}>
-                        <span
-                          style={{
-                            fontWeight: "700",
-                            fontSize: "14px",
-                            color: "#4a5568",
-                          }}
-                        >
-                          Độ tin cậy của mô hình Random Forest:{" "}
-                          {(sentimentResult.confidence * 100).toFixed(2)}%
-                        </span>
+                    {(() => {
+                      const SENTIMENT_UI: Record<
+                        number,
+                        { bg: string; border: string; color: string; bar: string; title: string }
+                      > = {
+                        2: { bg: "#f0fff4", border: "#c6f6d5", color: "#22543d", bar: "#48bb78", title: "Kết quả: Tích cực (Positive)" },
+                        1: { bg: "#fffaf0", border: "#feebc8", color: "#7b341e", bar: "#ed8936", title: "Kết quả: Trung tính (Neutral)" },
+                        0: { bg: "#fff5f5", border: "#fed7d7", color: "#742a2a", bar: "#e53e3e", title: "Kết quả: Tiêu cực / Góp ý (Negative)" },
+                      };
+                      const ui = SENTIMENT_UI[sentimentResult.label] ?? SENTIMENT_UI[1];
+                      const probs = sentimentResult.probabilities ?? {};
+                      return (
                         <div
                           style={{
-                            width: "100%",
-                            height: "12px",
-                            backgroundColor: "#edf2f7",
-                            borderRadius: "6px",
-                            overflow: "hidden",
-                            marginTop: "8px",
+                            padding: "20px",
+                            borderRadius: "8px",
+                            backgroundColor: ui.bg,
+                            border: `1px solid ${ui.border}`,
+                            textAlign: "center",
                           }}
                         >
-                          <div
-                            style={{
-                              width: `${sentimentResult.confidence * 100}%`,
-                              height: "100%",
-                              backgroundColor:
-                                sentimentResult.label === 1
-                                  ? "#48bb78"
-                                  : "#e53e3e",
-                            }}
-                          />
+                          <h3 style={{ color: ui.color }}>{ui.title}</h3>
+
+                          <div style={{ marginTop: "16px" }}>
+                            <span
+                              style={{
+                                fontWeight: "700",
+                                fontSize: "14px",
+                                color: "#4a5568",
+                              }}
+                            >
+                              Độ tin cậy của mô hình (TF-IDF + Logistic Regression):{" "}
+                              {(sentimentResult.confidence * 100).toFixed(2)}%
+                            </span>
+                            <div
+                              style={{
+                                width: "100%",
+                                height: "12px",
+                                backgroundColor: "#edf2f7",
+                                borderRadius: "6px",
+                                overflow: "hidden",
+                                marginTop: "8px",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: `${sentimentResult.confidence * 100}%`,
+                                  height: "100%",
+                                  backgroundColor: ui.bar,
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          {Object.keys(probs).length > 0 && (
+                            <div
+                              style={{
+                                marginTop: "16px",
+                                display: "flex",
+                                justifyContent: "center",
+                                gap: "16px",
+                                flexWrap: "wrap",
+                                fontSize: "13px",
+                                color: "#4a5568",
+                              }}
+                            >
+                              {["negative", "neutral", "positive"].map((k) =>
+                                probs[k] !== undefined ? (
+                                  <span key={k}>
+                                    {k === "positive" ? "Tích cực" : k === "neutral" ? "Trung tính" : "Tiêu cực"}:{" "}
+                                    <strong>{(probs[k] * 100).toFixed(1)}%</strong>
+                                  </span>
+                                ) : null,
+                              )}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -1140,12 +1167,12 @@ export default function DashboardClient({
         {activeTab === "teencode" && (
           <div className="tab-pane animate-fade">
             <div className="pane-header">
-              <h2>📚 Bộ Từ Điển Tiền Xử Lý Teen Code Tiếng Việt</h2>
+              <h2>Bộ Từ Điển Tiền Xử Lý Teen Code Tiếng Việt</h2>
             </div>
 
             <div className="teencode-tool-grid">
               <div className="translator-panel">
-                <h3>⚡ Trình thử nghiệm dịch từ viết tắt nhanh</h3>
+                <h3>Trình thử nghiệm dịch từ viết tắt nhanh</h3>
                 <textarea
                   placeholder="Nhập đoạn bình luận ngắn chứa teencode để thử nghiệm dịch..."
                   value={teencodeInput}
@@ -1157,7 +1184,7 @@ export default function DashboardClient({
                   onClick={handleTranslate}
                   style={{ marginTop: "12px" }}
                 >
-                  Dịch Dữ Liệu ⚡
+                  Dịch Dữ Liệu
                 </button>
 
                 {translatedText && (
@@ -1172,7 +1199,7 @@ export default function DashboardClient({
               </div>
 
               <div className="dictionary-panel">
-                <h3>📚 Danh mục bộ từ điển đối sánh</h3>
+                <h3>Danh mục bộ từ điển đối sánh</h3>
                 <div className="dict-list-wrapper">
                   <table>
                     <thead>

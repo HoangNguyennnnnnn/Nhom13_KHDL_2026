@@ -1,0 +1,3 @@
+model,f1_macro_cv
+TF-IDF + LogReg (baseline),0.6308
+PhoBERT-emb + LogReg (ours),0.5648

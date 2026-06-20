@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from pathlib import Path
@@ -9,6 +10,11 @@ from typing import Any
 
 import joblib
 import pandas as pd
+
+# Reuse the exact cleaning used at training time so inference matches.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "preprocessing"))
+from preprocess import clean_text, segment_vi  # noqa: E402
+from prepare_sentiment import apply_negation_tagging, strip_system_noise  # noqa: E402
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -51,12 +57,18 @@ async def lifespan(app: FastAPI):
     STATE["products"] = pd.read_csv("data-project/processed/products_clustered.csv") if Path("data-project/processed/products_clustered.csv").exists() else pd.DataFrame()
     STATE["customers"] = pd.read_csv("data-project/processed/customers_rfm.csv") if Path("data-project/processed/customers_rfm.csv").exists() else pd.DataFrame()
     STATE["rules"] = pd.read_csv("data-project/processed/association_rules.csv") if Path("data-project/processed/association_rules.csv").exists() else pd.DataFrame()
-    STATE["tfidf"] = load_pickle("models/sentiment/tfidf_vectorizer.pkl")
-    STATE["sentiment_model"] = load_pickle("models/sentiment/rf_classifier.pkl")
-    
+    # 3-class sentiment pipeline (TF-IDF + LogReg) trained on cleaned data.
+    STATE["sentiment_model"] = load_pickle("models/sentiment/sentiment_clf.pkl")
+    label_path = Path("models/sentiment/label_names.json")
+    import json
+    STATE["label_names"] = (
+        {int(k): v for k, v in json.loads(label_path.read_text(encoding="utf-8")).items()}
+        if label_path.exists()
+        else {0: "negative", 1: "neutral", 2: "positive"}
+    )
+
     # Load teencode mapping
     teencode_path = Path("data-project/teencode_dict.json")
-    import json
     STATE["teencode"] = json.loads(teencode_path.read_text(encoding="utf-8")) if teencode_path.exists() else {}
     yield
     STATE.clear()
@@ -204,53 +216,31 @@ def cross_sell(product_id: str):
 
 @app.post("/api/v1/sentiment/predict")
 def predict_sentiment(body: SentimentRequest):
-    tfidf = STATE.get("tfidf")
     model = STATE.get("sentiment_model")
     teencode = STATE.get("teencode", {})
-    if tfidf is None or model is None:
+    label_names = STATE.get("label_names", {0: "negative", 1: "neutral", 2: "positive"})
+    if model is None:
         raise HTTPException(status_code=503, detail="Sentiment analysis model is not loaded")
-        
-    text = str(body.text).lower()
-    import re
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = re.sub(r"https?://\S+|www\.\S+", " ", text)
-    text = re.sub(r"[^0-9a-zA-ZÀ-ỹ\s]", " ", text)
-    
-    words = text.split()
-    cleaned_words = [teencode.get(w, w) for w in words]
-    cleaned_text = " ".join(cleaned_words)
-    
-    # Extract underthesea sentiment
-    import underthesea
-    from scipy.sparse import hstack, csr_matrix
-    res = underthesea.sentiment(cleaned_text)
-    val = 1.0 if res == "positive" else 0.0 if res == "negative" else 0.5
-    X_uts = csr_matrix([[val]])
 
-    # Vectorize and combine features
-    X_vec = tfidf.transform([cleaned_text])
-    X_combined = hstack([X_vec, X_uts])
-    
-    if hasattr(model, "predict_proba"):
-        probabilities = model.predict_proba(X_combined)[0]
-        classes = list(getattr(model, "classes_", []))
-        if 1 in classes:
-            prob = float(probabilities[classes.index(1)])
-        elif "1" in classes:
-            prob = float(probabilities[classes.index("1")])
-        elif len(probabilities) == 2:
-            prob = float(probabilities[-1])
-        else:
-            prob = float(max(probabilities))
-    else:
-        pred = model.predict(X_combined)[0]
-        prob = 1.0 if str(pred) in {"1", "true", "positive", "pos"} else 0.0
-    
-    label = 1 if prob >= 0.5 else 0
-    confidence = prob if label == 1 else (1.0 - prob)
-    
+    # Same cleaning as training: strip "||" noise -> clean -> segment -> negation-tag.
+    cleaned_text = apply_negation_tagging(
+        segment_vi(clean_text(strip_system_noise(body.text), teencode))
+    )
+    if not cleaned_text.strip():
+        raise HTTPException(status_code=422, detail="Review text is empty after cleaning")
+
+    probabilities = model.predict_proba([cleaned_text])[0]
+    classes = list(model.classes_)
+    best = int(probabilities.argmax())
+    label = int(classes[best])
+
     return {
         "label": label,
-        "confidence": confidence,
-        "cleaned_text": cleaned_text
+        "label_name": label_names.get(label, str(label)),
+        "confidence": float(probabilities[best]),
+        "probabilities": {
+            label_names.get(int(c), str(c)): float(p)
+            for c, p in zip(classes, probabilities)
+        },
+        "cleaned_text": cleaned_text,
     }

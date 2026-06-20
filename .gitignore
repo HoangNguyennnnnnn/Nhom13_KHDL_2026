@@ -17,3 +17,6 @@ models/**/*.pkl
 dashboard/node_modules/
 dashboard/.next/
 dashboard/dev.db
+# Generated caches / build artifacts (regenerable, not needed in repo)
+*.tsbuildinfo
+*.npy
