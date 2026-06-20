@@ -1,0 +1,4 @@
+features,f1_macro_cv
+TF-IDF only,0.6308
+Hybrid TF-IDF+PhoBERT,0.5658
+PhoBERT only,0.5648
