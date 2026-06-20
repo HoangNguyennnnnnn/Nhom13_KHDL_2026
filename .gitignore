@@ -20,3 +20,6 @@ dashboard/dev.db
 # Generated caches / build artifacts (regenerable, not needed in repo)
 *.tsbuildinfo
 *.npy
+# Fine-tuned transformer model & training checkpoints (large, regenerable)
+models/sentiment/phobert_finetuned/
+models/sentiment/_phobert_ckpt/

@@ -11,10 +11,9 @@ from typing import Any
 import joblib
 import pandas as pd
 
-# Reuse the exact cleaning used at training time so inference matches.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "preprocessing"))
-from preprocess import clean_text, segment_vi  # noqa: E402
-from prepare_sentiment import apply_negation_tagging, strip_system_noise  # noqa: E402
+# Fine-tuned PhoBERT inference (shared with the Streamlit app).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "models" / "sentiment"))
+from predict import predict_sentiment as run_sentiment  # noqa: E402
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -57,19 +56,7 @@ async def lifespan(app: FastAPI):
     STATE["products"] = pd.read_csv("data-project/processed/products_clustered.csv") if Path("data-project/processed/products_clustered.csv").exists() else pd.DataFrame()
     STATE["customers"] = pd.read_csv("data-project/processed/customers_rfm.csv") if Path("data-project/processed/customers_rfm.csv").exists() else pd.DataFrame()
     STATE["rules"] = pd.read_csv("data-project/processed/association_rules.csv") if Path("data-project/processed/association_rules.csv").exists() else pd.DataFrame()
-    # 3-class sentiment pipeline (TF-IDF + LogReg) trained on cleaned data.
-    STATE["sentiment_model"] = load_pickle("models/sentiment/sentiment_clf.pkl")
-    label_path = Path("models/sentiment/label_names.json")
-    import json
-    STATE["label_names"] = (
-        {int(k): v for k, v in json.loads(label_path.read_text(encoding="utf-8")).items()}
-        if label_path.exists()
-        else {0: "negative", 1: "neutral", 2: "positive"}
-    )
-
-    # Load teencode mapping
-    teencode_path = Path("data-project/teencode_dict.json")
-    STATE["teencode"] = json.loads(teencode_path.read_text(encoding="utf-8")) if teencode_path.exists() else {}
+    # Fine-tuned PhoBERT model is loaded lazily on first /sentiment/predict call.
     yield
     STATE.clear()
 
@@ -216,31 +203,9 @@ def cross_sell(product_id: str):
 
 @app.post("/api/v1/sentiment/predict")
 def predict_sentiment(body: SentimentRequest):
-    model = STATE.get("sentiment_model")
-    teencode = STATE.get("teencode", {})
-    label_names = STATE.get("label_names", {0: "negative", 1: "neutral", 2: "positive"})
-    if model is None:
-        raise HTTPException(status_code=503, detail="Sentiment analysis model is not loaded")
-
-    # Same cleaning as training: strip "||" noise -> clean -> segment -> negation-tag.
-    cleaned_text = apply_negation_tagging(
-        segment_vi(clean_text(strip_system_noise(body.text), teencode))
-    )
-    if not cleaned_text.strip():
-        raise HTTPException(status_code=422, detail="Review text is empty after cleaning")
-
-    probabilities = model.predict_proba([cleaned_text])[0]
-    classes = list(model.classes_)
-    best = int(probabilities.argmax())
-    label = int(classes[best])
-
-    return {
-        "label": label,
-        "label_name": label_names.get(label, str(label)),
-        "confidence": float(probabilities[best]),
-        "probabilities": {
-            label_names.get(int(c), str(c)): float(p)
-            for c, p in zip(classes, probabilities)
-        },
-        "cleaned_text": cleaned_text,
-    }
+    if not body.text or not body.text.strip():
+        raise HTTPException(status_code=422, detail="Review text is empty")
+    try:
+        return run_sentiment(body.text)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))

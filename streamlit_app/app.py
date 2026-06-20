@@ -8,10 +8,9 @@ import sys
 from pathlib import Path
 import joblib
 
-# Shared cleaning so Streamlit inference matches the trained model exactly.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "preprocessing"))
-from preprocess import clean_text, segment_vi  # noqa: E402
-from prepare_sentiment import apply_negation_tagging, strip_system_noise  # noqa: E402
+# Shared fine-tuned PhoBERT inference (same model + cleaning as the FastAPI backend).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "models" / "sentiment"))
+from predict import predict_sentiment as run_sentiment  # noqa: E402
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -588,43 +587,28 @@ with tab5:
         unsafe_allow_html=True
     )
     
-    model_path = Path("models/sentiment/sentiment_clf.pkl")
-    label_path = Path("models/sentiment/label_names.json")
-    LABEL_NAMES = (
-        {int(k): v for k, v in json.loads(label_path.read_text(encoding="utf-8")).items()}
-        if label_path.exists()
-        else {0: "negative", 1: "neutral", 2: "positive"}
-    )
+    model_dir = Path("models/sentiment/phobert_finetuned")
 
     user_input_review = st.text_area("Nhập đánh giá của khách hàng cần kiểm thử (ví dụ: máy dùng siu ngon, pin trâu k giật lag gì cả, sạc pin hơi nóng máy...)", height=150)
 
     if st.button("Phân tích ý kiến", type="primary"):
-        if not model_path.exists():
-            st.error("Chưa tìm thấy tệp trọng số mô hình Sentiment (models/sentiment/sentiment_clf.pkl). Vui lòng huấn luyện model.")
+        if not model_dir.exists():
+            st.error("Chưa tìm thấy mô hình PhoBERT (models/sentiment/phobert_finetuned/). Hãy chạy models/sentiment/train_phobert.py.")
         elif not user_input_review.strip():
             st.warning("Vui lòng nhập nội dung đánh giá để kiểm thử.")
         else:
-            # Same cleaning as training: strip "||" -> clean -> segment -> negation tag.
-            cleaned_text = apply_negation_tagging(
-                segment_vi(clean_text(strip_system_noise(user_input_review), teencode_dict))
-            )
+            result = run_sentiment(user_input_review)
+            name = result["label_name"]
+            confidence = result["confidence"]
 
             st.markdown("##### Quá trình tiền xử lý ngôn ngữ tự nhiên (NLP):")
             col_pre1, col_pre2 = st.columns(2)
             with col_pre1:
                 st.info(f"**Văn bản gốc:**\n*\"{user_input_review}\"*")
             with col_pre2:
-                st.success(f"**Đã xử lý (chuẩn hoá + tách từ + gắn phủ định):**\n*\"{cleaned_text}\"*")
+                st.success(f"**Đã xử lý (chuẩn hoá + tách từ):**\n*\"{result['cleaned_text']}\"*")
 
-            classifier = joblib.load(model_path)
-            probs = classifier.predict_proba([cleaned_text])[0]
-            classes = list(classifier.classes_)
-            best = int(np.argmax(probs))
-            label = int(classes[best])
-            confidence = float(probs[best])
-            name = LABEL_NAMES.get(label, str(label))
-
-            st.markdown("##### Kết quả từ mô hình (TF-IDF + Logistic Regression):")
+            st.markdown("##### Kết quả từ mô hình (PhoBERT fine-tuned):")
             if name == "positive":
                 st.success(f"### Nhãn: Tích cực (Positive) - Độ tin cậy: {confidence:.2%}")
             elif name == "neutral":
@@ -634,7 +618,7 @@ with tab5:
             st.progress(confidence)
 
             # Show the full 3-class probability breakdown.
-            prob_map = {LABEL_NAMES.get(int(c), str(c)): float(p) for c, p in zip(classes, probs)}
+            prob_map = result["probabilities"]
             cols = st.columns(3)
             for col, key, vi in zip(cols, ["negative", "neutral", "positive"], ["Tiêu cực", "Trung tính", "Tích cực"]):
                 if key in prob_map:

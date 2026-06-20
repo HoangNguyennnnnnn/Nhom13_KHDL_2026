@@ -6,7 +6,7 @@ Dự án là hệ thống phân tích dữ liệu và học máy end-to-end cho 
 1. **Thu thập dữ liệu**: Trình cào Selenium tự động thu thập thông tin sản phẩm và đánh giá từ website TGDD.
 2. **Tiền xử lý & Trích xuất đặc trưng**: Chuẩn hóa đơn vị đo, làm sạch văn bản và dịch từ viết tắt (Teen code) tiếng Việt bằng từ điển tùy chỉnh. Tự động trích xuất RAM/ROM/Pin/Camera từ tên sản phẩm.
 3. **Phân tích cảm xúc theo khía cạnh (Aspect-Based Sentiment)**: Chia đánh giá thành 5 khía cạnh (Pin & Sạc, Hiệu năng, Camera, Thiết kế, Dịch vụ) để tìm ưu/nhược điểm từng sản phẩm.
-4. **Phân loại cảm xúc 3 lớp (Sentiment Classification)**: Pipeline thiên về dữ liệu — làm sạch nhiễu, gán nhãn 3 lớp (tiêu cực / trung tính / tích cực), feature engineering xử lý phủ định, huấn luyện TF-IDF + Logistic Regression.
+4. **Phân loại cảm xúc 3 lớp (Sentiment Classification)**: Làm sạch nhiễu, gán nhãn 3 lớp (tiêu cực / trung tính / tích cực) từ số sao, rồi fine-tune mô hình PhoBERT để hiểu ngữ cảnh và phủ định tiếng Việt ("máy không tốt" -> tiêu cực).
 5. **Học máy không giám sát (Clustering)**: KMeans kết hợp PCA để gom cụm và trực quan hóa phân khúc smartphone 2D.
 6. **Độ nhạy giá (Price Elasticity)**: Hồi quy tuyến tính định lượng độ nhạy sức mua theo tỉ lệ chiết khấu.
 7. **Dự báo doanh số (XGBoost Regressor)**: XGBoost + Optuna + KFold cross-validation dự đoán doanh số ngày tiếp theo.
@@ -20,7 +20,7 @@ Dự án là hệ thống phân tích dữ liệu và học máy end-to-end cho 
 * **Python**: `>= 3.10`
 * **Node.js**: `>= 18.0` (để chạy Next.js dashboard)
 * **Google Chrome & Chromedriver**: cùng phiên bản, để chạy Selenium scraper.
-* **RAM**: tối thiểu 8GB.
+* **RAM**: tối thiểu 8GB. Fine-tune PhoBERT dùng ~3-4GB, tự động chạy trên GPU Apple (MPS) / CUDA nếu có, không bắt buộc GPU (CPU vẫn train được, chậm hơn).
 
 ---
 
@@ -42,7 +42,7 @@ source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
-Lệnh `pip install -r requirements.txt` đã bao gồm `underthesea`, `pyvi` cần cho bước tách từ và xử lý tiếng Việt.
+Lệnh `pip install -r requirements.txt` đã bao gồm `underthesea`, `pyvi` (tách từ tiếng Việt) và `torch`, `transformers`, `accelerate` (fine-tune PhoBERT). Lần đầu chạy bước cảm xúc, `transformers` tự tải `vinai/phobert-base` (~500MB) về cache `~/.cache/huggingface` — cần internet ở lần đầu, các lần sau dùng lại cache.
 
 ### Bước 1.2: Cài đặt Next.js Frontend
 ```bash
@@ -72,23 +72,22 @@ Chuẩn hóa dữ liệu thô, trích xuất RAM/ROM/Pin/Camera, làm sạch vă
 python preprocessing/preprocess.py
 ```
 
-### Bước 2.3: Chuẩn bị dữ liệu cảm xúc (làm sạch + gán nhãn 3 lớp + xử lý phủ định)
-Đây là bước trọng tâm khai phá dữ liệu của module cảm xúc. Nó:
+### Bước 2.3: Chuẩn bị dữ liệu cảm xúc (làm sạch + gán nhãn 3 lớp)
+Bước trọng tâm khai phá dữ liệu của module cảm xúc. Nó:
 * Cắt bỏ phần nhiễu hệ thống TGDD chèn sau dấu `||` ("Bộ phận hỗ trợ đã liên hệ...").
 * Gán nhãn 3 lớp theo số sao: 1-2 sao = tiêu cực (0), 3 sao = trung tính (1), 4-5 sao = tích cực (2).
-* Khử trùng lặp đánh giá.
-* Feature engineering xử lý phủ định: gắn tiền tố `neg_` cho từ trong phạm vi phủ định và phát token chỉ báo cực tính dùng chung (ví dụ "không tốt" -> "không neg_tốt neg_pos_marker").
+* Khử trùng lặp đánh giá và tách từ tiếng Việt (PhoBERT cần văn bản đã tách từ).
 ```bash
 python preprocessing/prepare_sentiment.py
 ```
 Kết quả: `data-project/processed/reviews_labeled.csv` (in ra phân bố nhãn).
 
-### Bước 2.4: Huấn luyện mô hình Phân loại cảm xúc 3 lớp (TF-IDF + Logistic Regression)
-Huấn luyện mô hình chính, đánh giá bằng 5-fold cross-validation (F1/precision/recall macro), lưu mô hình và smoke test trên vài câu phủ định:
+### Bước 2.4: Fine-tune mô hình Phân loại cảm xúc 3 lớp (PhoBERT)
+Fine-tune `vinai/phobert-base` trên dữ liệu đã gán nhãn để hiểu ngữ cảnh và phủ định tiếng Việt. Tự dùng GPU Apple (MPS) / CUDA nếu có, mất ~10-20 phút trên MPS:
 ```bash
-python models/sentiment/train_sentiment.py
+python models/sentiment/train_phobert.py
 ```
-Kết quả: `models/sentiment/sentiment_clf.pkl`, `label_names.json`, `sentiment_metrics.csv`.
+Kết quả: `models/sentiment/phobert_finetuned/` (mô hình + tokenizer), `label_names.json`, `phobert_metrics.json` (metrics trên tập test).
 
 ### Bước 2.5: Phân tích khía cạnh đánh giá (Aspect Analysis)
 ```bash
@@ -139,14 +138,14 @@ streamlit run streamlit_app/app.py
 
 ## 3.1. DEMO NHANH PHÂN TÍCH CẢM XÚC
 
-Điều kiện: đã chạy Bước 2.3 và 2.4 để có `models/sentiment/sentiment_clf.pkl`.
+Điều kiện: đã chạy Bước 2.3 và 2.4 để có `models/sentiment/phobert_finetuned/`.
 
 **Cách 1 — Giao diện Streamlit (khuyến nghị khi demo):**
 ```bash
 streamlit run streamlit_app/app.py
 ```
 Mở tab **"Thử Nghiệm Mô Hình Sentiment"** → gõ một bình luận → bấm **"Phân tích ý kiến"**.
-Kết quả hiển thị: nhãn (Tích cực / Trung tính / Tiêu cực), độ tin cậy, xác suất cả 3 lớp, và văn bản sau khi làm sạch (cắt nhiễu `||`, tách từ, gắn phủ định).
+Kết quả hiển thị: nhãn (Tích cực / Trung tính / Tiêu cực), độ tin cậy, xác suất cả 3 lớp, và văn bản sau khi làm sạch (cắt nhiễu `||`, chuẩn hóa, tách từ).
 
 **Cách 2 — Gọi trực tiếp API:**
 ```bash
@@ -165,7 +164,7 @@ Hoặc mở [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs), chọn `PO
 ## 4. CHI TIẾT CÁC ENDPOINT API CHÍNH (FASTAPI)
 
 * `GET /api/v1/products/clusters`: Danh sách sản phẩm kèm tên phân cụm và tọa độ `PC1`/`PC2`.
-* `POST /api/v1/sentiment/predict`: Nhận văn bản thô, áp cùng pipeline làm sạch như lúc huấn luyện (cắt nhiễu `||`, chuẩn hóa Teen code, tách từ, gắn phủ định) và trả về:
+* `POST /api/v1/sentiment/predict`: Nhận văn bản thô, áp cùng pipeline làm sạch như lúc huấn luyện (cắt nhiễu `||`, chuẩn hóa Teen code, tách từ) rồi đưa qua PhoBERT fine-tuned, trả về:
   * `label` (0 = tiêu cực, 1 = trung tính, 2 = tích cực) và `label_name`,
   * `confidence` của lớp dự đoán,
   * `probabilities` xác suất cả 3 lớp,
@@ -179,5 +178,6 @@ Hoặc mở [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs), chọn `PO
 
 | File | Vai trò |
 | --- | --- |
-| `preprocessing/prepare_sentiment.py` | Làm sạch, gán nhãn 3 lớp, khử trùng lặp, feature engineering phủ định |
-| `models/sentiment/train_sentiment.py` | Huấn luyện mô hình production TF-IDF + Logistic Regression (3 lớp) |
+| `preprocessing/prepare_sentiment.py` | Làm sạch nhiễu, gán nhãn 3 lớp, khử trùng lặp, tách từ |
+| `models/sentiment/train_phobert.py` | Fine-tune PhoBERT 3 lớp trên dữ liệu đã gán nhãn |
+| `models/sentiment/predict.py` | Inference dùng chung cho FastAPI + Streamlit (load PhoBERT, làm sạch, dự đoán) |
