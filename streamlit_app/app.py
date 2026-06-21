@@ -32,44 +32,57 @@ st.markdown(
     <style>
     .main-title {
         font-size: 2.2rem;
-        font-weight: 700;
-        background: linear-gradient(135deg, #1f4068, #162447, #e43f5a);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 1.5rem;
+        font-weight: 800;
+        color: #14233f;
+        margin-bottom: 1.2rem;
         text-align: center;
+        letter-spacing: 0.3px;
     }
     .sub-title {
         font-size: 1.1rem;
-        color: #555;
+        color: #2d3b52;
+        font-weight: 500;
         text-align: center;
         margin-bottom: 2rem;
     }
     .metric-card {
-        background-color: #f8f9fa;
-        border-left: 5px solid #1f4068;
+        background-color: #ffffff;
+        border: 1px solid #d7dee8;
+        border-left: 6px solid #1f4068;
         padding: 1.2rem;
         border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        box-shadow: 0 4px 10px rgba(20,35,63,0.08);
         margin-bottom: 1rem;
     }
     .metric-value {
-        font-size: 1.8rem;
-        font-weight: bold;
-        color: #1f4068;
+        font-size: 1.9rem;
+        font-weight: 800;
+        color: #14233f;
     }
     .metric-label {
         font-size: 0.9rem;
-        color: #6c757d;
+        color: #44546b;
+        font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
+    /* High-contrast explanation panel: dark text forced on a light panel so it
+       stays legible even if the browser/OS is in dark mode. */
     .explanation-box {
-        background-color: #edf2f7;
+        background-color: #eef3fb;
+        color: #14233f;
         border-radius: 8px;
         padding: 1.5rem;
-        border-left: 5px solid #e43f5a;
+        border-left: 6px solid #c62f48;
         margin-bottom: 1.5rem;
+        line-height: 1.6;
+    }
+    .explanation-box h4 {
+        color: #0f1d36;
+        margin-top: 0;
+    }
+    .explanation-box li, .explanation-box b, .explanation-box ul {
+        color: #14233f;
     }
     </style>
     """,
@@ -573,7 +586,7 @@ with tab4:
 
 # ================= TAB 5: ML SENTIMENT ROOM =================
 with tab5:
-    st.header("Trải nghiệm mô hình nhận diện ý kiến đánh giá (TF-IDF + Logistic Regression, 3 lớp)")
+    st.header("Trải nghiệm mô hình nhận diện ý kiến đánh giá (PhoBERT fine-tuned, 3 lớp)")
     
     st.markdown(
         """

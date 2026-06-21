@@ -1,0 +1,17 @@
+[server]
+# Disable the source watcher. Its module introspection walks transformers' lazy
+# vision modules (vitmatte/yolos/zoedepth...) which import torchvision — not
+# installed here (we only use PhoBERT for text), producing a flood of harmless
+# ModuleNotFoundError tracebacks. Turning the watcher off silences them.
+# Trade-off: no auto-reload on save — restart streamlit to pick up code changes.
+fileWatcherType = "none"
+
+[theme]
+# Pin a light, high-contrast theme so custom HTML boxes (which set dark text on
+# light backgrounds) stay readable regardless of the viewer's OS dark-mode setting.
+base = "light"
+primaryColor = "#1f4068"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f1f4f9"
+textColor = "#1a1a2e"
+font = "sans serif"

@@ -23,10 +23,8 @@ Dự án là hệ thống phân tích dữ liệu và học máy end-to-end cho 
 * **RAM**: tối thiểu 8GB. Fine-tune PhoBERT dùng ~3-4GB, tự động chạy trên GPU Apple (MPS) / CUDA nếu có, không bắt buộc GPU (CPU vẫn train được, chậm hơn).
 
 ---
-
-## 1. CÀI ĐẶT MÔI TRƯỜNG
-
-### Bước 1.1: Thiết lập Python Virtual Environment
+1. CÀI ĐẶT MÔI TRƯỜNG
+Bước 1.1: Thiết lập Python Virtual Environment
 Mở terminal tại thư mục gốc của dự án:
 ```bash
 # Tạo môi trường ảo
@@ -52,21 +50,16 @@ cp .env.example .env
 npm run dev
 ```
 (Nếu FastAPI chạy ở cổng khác `http://localhost:8000`, cập nhật biến `NEXT_PUBLIC_API_BASE_URL` trong `dashboard/.env`.)
-
 ---
-
-## 2. QUY TRÌNH CHẠY PIPELINE (END-TO-END)
-
-Chạy tuần tự các lệnh sau từ **thư mục gốc** (đảm bảo `.venv` đã kích hoạt).
-
-### Bước 2.1: Thu thập dữ liệu từ TGDD
+2. QUY TRÌNH CHẠY PIPELINE (END-TO-END)
+Chạy tuần tự các lệnh sau từ thư mục gốc (đảm bảo `.venv` đã kích hoạt).
+Bước 2.1: Thu thập dữ liệu từ TGDD
 ```bash
 # Cào sản phẩm smartphone và tối đa 2000 reviews/sản phẩm
 python scraper/tgdd_scraper.py --category smartphone --max-reviews 2000
 ```
 Kết quả: `products.csv` và `reviews.csv`.
-
-### Bước 2.2: Tiền xử lý dữ liệu & Trích xuất thông số kỹ thuật
+Bước 2.2: Tiền xử lý dữ liệu & Trích xuất thông số kỹ thuật
 Chuẩn hóa dữ liệu thô, trích xuất RAM/ROM/Pin/Camera, làm sạch văn bản và đối chiếu Teen code:
 ```bash
 python preprocessing/preprocess.py
@@ -114,14 +107,13 @@ python models/forecasting/train_xgboost.py --trials 100
 ## 3. KHỞI CHẠY ỨNG DỤNG
 
 Sau khi pipeline ở phần 2 chạy xong và các file `.pkl` cùng dữ liệu đã lưu trong `data-project/processed/`, khởi động các dịch vụ:
-
-### Dịch vụ 1: FastAPI Backend (Port 8000)
+Dịch vụ 1: FastAPI Backend (Port 8000)
 ```bash
 python -m uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+python -m uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
 ```
-* Tài liệu API tương tác (Swagger UI): [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-
-### Dịch vụ 2: Next.js Frontend Dashboard (Port 3000)
+Tài liệu API tương tác (Swagger UI): http://127.0.0.1:8000/docs
+Dịch vụ 2: Next.js Frontend Dashboard (Port 3000)
 ```bash
 cd dashboard
 npm run dev
