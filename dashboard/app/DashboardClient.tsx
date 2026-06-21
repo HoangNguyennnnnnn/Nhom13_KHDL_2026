@@ -147,7 +147,7 @@ export default function DashboardClient({
       setForecastResults([]);
       const message = err instanceof Error ? err.message : String(err);
       setForecastError(
-        `Lỗi backend dự báo: ${message}. Hãy kiểm tra API FastAPI ở cổng 8000.`,
+        `Lỗi backend dự báo: ${message}. Hãy kiểm tra API FastAPI ở cổng 8001.`,
       );
     } finally {
       setForecasting(false);
@@ -164,7 +164,7 @@ export default function DashboardClient({
     setSentimentResult(null);
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/api/v1/sentiment/predict",
+        "http://127.0.0.1:8001/api/v1/sentiment/predict",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 from pathlib import Path
 
 import numpy as np
@@ -35,73 +34,6 @@ LABEL_NAMES = {0: "negative", 1: "neutral", 2: "positive"}
 NAME_TO_LABEL = {v: k for k, v in LABEL_NAMES.items()}
 
 # --- Negation handling (feature engineering, data-mining stage [5]) -----------
-# Vietnamese negators. After one of these, the following words flip polarity, so
-# we tag them with a "neg_" prefix -> TF-IDF treats "neg_tốt" as its own feature,
-# distinct from "tốt". This teaches a bag-of-words model about negation purely
-# through data, no deep learning needed.
-NEGATORS = {
-    "không", "khong", "ko", "k", "kg", "khg", "hổng", "hông", "hong",
-    "chẳng", "chăng", "chả", "cha", "chưa", "chua", "đừng", "dung",
-    "khỏi", "đéo", "đếch", "deh", "miễn",
-}
-# Clause-boundary words that end the scope of a negation.
-NEG_STOP = {"nhưng", "nhung", "mà", "ma", "tuy", "song", "dù", "dẫu"}
-NEG_WINDOW = 3  # tag at most this many tokens after a negator
-
-# Sentiment lexicon (seed words common in phone reviews). When a word from these
-# sets falls inside a negation scope we also emit ONE shared marker token, so all
-# "không + <positive>" cases collapse onto a single strong feature (NEG_POS)
-# instead of many rare per-word features -> learnable even on a small dataset.
-POSITIVE_LEXICON = {
-    "tốt", "đẹp", "ngon", "mượt", "nhanh", "hài_lòng", "ưng", "thích", "đáng",
-    "rẻ", "bền", "trâu", "xịn", "ok", "ổn", "tuyệt", "hoàn_hảo", "nét",
-    "sắc_nét", "mạnh", "êm", "ngọt", "chất", "ngầu", "hời", "recommend",
-}
-NEGATIVE_LEXICON = {
-    "tệ", "kém", "xấu", "chậm", "lag", "giật", "hỏng", "lỗi", "đắt", "nóng",
-    "yếu", "dở", "thất_vọng", "chán", "tồi", "gian_dối", "bực", "đơ", "rớt",
-    "mờ", "nhoè", "hư", "trầy", "lừa",
-}
-NEG_POS_MARKER = "neg_pos_marker"  # a negated positive word -> negative sentiment
-NEG_NEG_MARKER = "neg_neg_marker"  # a negated negative word -> positive sentiment
-
-
-def apply_negation_tagging(segmented_text: str, window: int = NEG_WINDOW) -> str:
-    """Tag words inside a negation scope and emit shared polarity markers.
-
-    Example: "không tốt chút nào" ->
-        "không neg_tốt neg_pos_marker neg_chút neg_nào".
-    The per-word ``neg_`` prefix preserves detail; the shared ``neg_pos_marker`` /
-    ``neg_neg_marker`` tokens concentrate the negation signal so the model learns
-    it even when individual negated words are rare. Scope ends after ``window``
-    tokens or at a clause boundary (e.g. "nhưng").
-    """
-    if not segmented_text:
-        return ""
-    tokens = segmented_text.split()
-    out: list[str] = []
-    countdown = 0
-    for tok in tokens:
-        if tok in NEGATORS:
-            out.append(tok)
-            countdown = window
-            continue
-        if countdown > 0:
-            if tok in NEG_STOP:
-                countdown = 0
-                out.append(tok)
-            else:
-                out.append(f"neg_{tok}")
-                if tok in POSITIVE_LEXICON:
-                    out.append(NEG_POS_MARKER)
-                elif tok in NEGATIVE_LEXICON:
-                    out.append(NEG_NEG_MARKER)
-                countdown -= 1
-        else:
-            out.append(tok)
-    return " ".join(out)
-
-
 TEENCODE_PATH = Path("data-project/teencode_dict.json")
 # Where the raw CSV may live (root of repo first, then the canonical raw dir).
 RAW_CANDIDATES = [Path("reviews.csv"), Path("data-project/raw/reviews.csv")]
@@ -158,10 +90,8 @@ def prepare(input_path: Path | None = None) -> pd.DataFrame:
     df["Review_Text_Clean"] = df["Review_Text_NoNoise"].map(
         lambda value: clean_text(value, teencode)
     )
-    # Word-segmented form is what PhoBERT / TF-IDF both consume.
+    # Word-segmented form is what PhoBERT consumes (it expects word segmentation).
     df["Review_Text_Segmented"] = df["Review_Text_Clean"].map(segment_vi)
-    # Final feature column: segmentation + negation tagging (what the model trains on).
-    df["Review_Text_Final"] = df["Review_Text_Segmented"].map(apply_negation_tagging)
 
     # [4] Labeling -----------------------------------------------------------
     df["label"] = df["Star_Rating"].map(label_from_stars)

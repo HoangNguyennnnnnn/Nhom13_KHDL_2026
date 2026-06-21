@@ -8,10 +8,9 @@ import sys
 from pathlib import Path
 import joblib
 
-# Shared cleaning so Streamlit inference matches the trained model exactly.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "preprocessing"))
-from preprocess import clean_text, segment_vi  # noqa: E402
-from prepare_sentiment import apply_negation_tagging, strip_system_noise  # noqa: E402
+# Shared fine-tuned PhoBERT inference (same model + cleaning as the FastAPI backend).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "models" / "sentiment"))
+from predict import predict_sentiment as run_sentiment  # noqa: E402
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -33,44 +32,57 @@ st.markdown(
     <style>
     .main-title {
         font-size: 2.2rem;
-        font-weight: 700;
-        background: linear-gradient(135deg, #1f4068, #162447, #e43f5a);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 1.5rem;
+        font-weight: 800;
+        color: #14233f;
+        margin-bottom: 1.2rem;
         text-align: center;
+        letter-spacing: 0.3px;
     }
     .sub-title {
         font-size: 1.1rem;
-        color: #555;
+        color: #2d3b52;
+        font-weight: 500;
         text-align: center;
         margin-bottom: 2rem;
     }
     .metric-card {
-        background-color: #f8f9fa;
-        border-left: 5px solid #1f4068;
+        background-color: #ffffff;
+        border: 1px solid #d7dee8;
+        border-left: 6px solid #1f4068;
         padding: 1.2rem;
         border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        box-shadow: 0 4px 10px rgba(20,35,63,0.08);
         margin-bottom: 1rem;
     }
     .metric-value {
-        font-size: 1.8rem;
-        font-weight: bold;
-        color: #1f4068;
+        font-size: 1.9rem;
+        font-weight: 800;
+        color: #14233f;
     }
     .metric-label {
         font-size: 0.9rem;
-        color: #6c757d;
+        color: #44546b;
+        font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
+    /* High-contrast explanation panel: dark text forced on a light panel so it
+       stays legible even if the browser/OS is in dark mode. */
     .explanation-box {
-        background-color: #edf2f7;
+        background-color: #eef3fb;
+        color: #14233f;
         border-radius: 8px;
         padding: 1.5rem;
-        border-left: 5px solid #e43f5a;
+        border-left: 6px solid #c62f48;
         margin-bottom: 1.5rem;
+        line-height: 1.6;
+    }
+    .explanation-box h4 {
+        color: #0f1d36;
+        margin-top: 0;
+    }
+    .explanation-box li, .explanation-box b, .explanation-box ul {
+        color: #14233f;
     }
     </style>
     """,
@@ -574,7 +586,7 @@ with tab4:
 
 # ================= TAB 5: ML SENTIMENT ROOM =================
 with tab5:
-    st.header("Trải nghiệm mô hình nhận diện ý kiến đánh giá (TF-IDF + Logistic Regression, 3 lớp)")
+    st.header("Trải nghiệm mô hình nhận diện ý kiến đánh giá (PhoBERT fine-tuned, 3 lớp)")
     
     st.markdown(
         """
@@ -588,43 +600,28 @@ with tab5:
         unsafe_allow_html=True
     )
     
-    model_path = Path("models/sentiment/sentiment_clf.pkl")
-    label_path = Path("models/sentiment/label_names.json")
-    LABEL_NAMES = (
-        {int(k): v for k, v in json.loads(label_path.read_text(encoding="utf-8")).items()}
-        if label_path.exists()
-        else {0: "negative", 1: "neutral", 2: "positive"}
-    )
+    model_dir = Path("models/sentiment/phobert_finetuned")
 
     user_input_review = st.text_area("Nhập đánh giá của khách hàng cần kiểm thử (ví dụ: máy dùng siu ngon, pin trâu k giật lag gì cả, sạc pin hơi nóng máy...)", height=150)
 
     if st.button("Phân tích ý kiến", type="primary"):
-        if not model_path.exists():
-            st.error("Chưa tìm thấy tệp trọng số mô hình Sentiment (models/sentiment/sentiment_clf.pkl). Vui lòng huấn luyện model.")
+        if not model_dir.exists():
+            st.error("Chưa tìm thấy mô hình PhoBERT (models/sentiment/phobert_finetuned/). Hãy chạy models/sentiment/train_phobert.py.")
         elif not user_input_review.strip():
             st.warning("Vui lòng nhập nội dung đánh giá để kiểm thử.")
         else:
-            # Same cleaning as training: strip "||" -> clean -> segment -> negation tag.
-            cleaned_text = apply_negation_tagging(
-                segment_vi(clean_text(strip_system_noise(user_input_review), teencode_dict))
-            )
+            result = run_sentiment(user_input_review)
+            name = result["label_name"]
+            confidence = result["confidence"]
 
             st.markdown("##### Quá trình tiền xử lý ngôn ngữ tự nhiên (NLP):")
             col_pre1, col_pre2 = st.columns(2)
             with col_pre1:
                 st.info(f"**Văn bản gốc:**\n*\"{user_input_review}\"*")
             with col_pre2:
-                st.success(f"**Đã xử lý (chuẩn hoá + tách từ + gắn phủ định):**\n*\"{cleaned_text}\"*")
+                st.success(f"**Đã xử lý (chuẩn hoá + tách từ):**\n*\"{result['cleaned_text']}\"*")
 
-            classifier = joblib.load(model_path)
-            probs = classifier.predict_proba([cleaned_text])[0]
-            classes = list(classifier.classes_)
-            best = int(np.argmax(probs))
-            label = int(classes[best])
-            confidence = float(probs[best])
-            name = LABEL_NAMES.get(label, str(label))
-
-            st.markdown("##### Kết quả từ mô hình (TF-IDF + Logistic Regression):")
+            st.markdown("##### Kết quả từ mô hình (PhoBERT fine-tuned):")
             if name == "positive":
                 st.success(f"### Nhãn: Tích cực (Positive) - Độ tin cậy: {confidence:.2%}")
             elif name == "neutral":
@@ -634,7 +631,7 @@ with tab5:
             st.progress(confidence)
 
             # Show the full 3-class probability breakdown.
-            prob_map = {LABEL_NAMES.get(int(c), str(c)): float(p) for c, p in zip(classes, probs)}
+            prob_map = result["probabilities"]
             cols = st.columns(3)
             for col, key, vi in zip(cols, ["negative", "neutral", "positive"], ["Tiêu cực", "Trung tính", "Tích cực"]):
                 if key in prob_map:
