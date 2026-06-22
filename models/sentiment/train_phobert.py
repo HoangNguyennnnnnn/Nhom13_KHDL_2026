@@ -33,7 +33,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "preprocessing"))
 from preprocess import clean_text, segment_vi  # noqa: E402
-from augment import build_negation_examples  # noqa: E402
+from augment import build_augmentation  # noqa: E402
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 from sklearn.model_selection import train_test_split
 from transformers import (
@@ -94,7 +94,7 @@ def main() -> None:
     # in <10 reviews, so the model never learns them without this.
     teencode_path = Path("data-project/teencode_dict.json")
     teencode = json.loads(teencode_path.read_text(encoding="utf-8")) if teencode_path.exists() else {}
-    aug_raw, aug_labels = build_negation_examples()
+    aug_raw, aug_labels = build_augmentation()
     aug_clean = [segment_vi(clean_text(t, teencode)) for t in aug_raw]
     aug_clean = [t for t in aug_clean if t.strip()]
     X_train = X_train + aug_clean
